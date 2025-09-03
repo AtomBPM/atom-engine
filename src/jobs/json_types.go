@@ -84,6 +84,13 @@ type GetJobPayload struct {
 	JobID string `json:"job_id"`
 }
 
+// UpdateJobRetriesPayload payload for updating job retries
+// Payload для обновления retries job'а
+type UpdateJobRetriesPayload struct {
+	JobKey     string `json:"job_key"`
+	NewRetries int    `json:"new_retries"`
+}
+
 // JobResult result structure for job operations
 // Структура результата для операций с job'ами
 type JobResult struct {

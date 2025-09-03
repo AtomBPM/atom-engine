@@ -478,6 +478,8 @@ func (c *Component) ProcessMessage(ctx context.Context, messageJSON string) erro
 		return c.handleFailJob(ctx, request)
 	case "cancel_job":
 		return c.handleCancelJob(ctx, request)
+	case "update_job_retries":
+		return c.handleUpdateJobRetries(ctx, request)
 	case "list_jobs":
 		return c.handleListJobs(ctx, request)
 	case "get_job":
@@ -624,6 +626,37 @@ func (c *Component) handleCancelJob(ctx context.Context, request JobRequest) err
 			Timestamp: time.Now().Unix(),
 		}
 		response = CreateJobResponse("cancel_job_response", request.RequestID, result)
+	}
+
+	return c.sendResponse(response)
+}
+
+// handleUpdateJobRetries handles job retries update request
+// Обрабатывает запрос обновления retries job'а
+func (c *Component) handleUpdateJobRetries(ctx context.Context, request JobRequest) error {
+	var payload UpdateJobRetriesPayload
+	if err := mapToStruct(request.Payload, &payload); err != nil {
+		response := CreateJobErrorResponse("update_job_retries_response", request.RequestID, fmt.Sprintf("invalid payload: %v", err))
+		return c.sendResponse(response)
+	}
+
+	c.logger.Info("Updating job retries",
+		logger.String("job_key", payload.JobKey),
+		logger.Int("new_retries", payload.NewRetries))
+
+	err := c.manager.UpdateJobRetries(ctx, payload.JobKey, payload.NewRetries)
+
+	var response JobResponse
+	if err != nil {
+		response = CreateJobErrorResponse("update_job_retries_response", request.RequestID, err.Error())
+	} else {
+		result := JobResult{
+			JobKey:    payload.JobKey,
+			Success:   true,
+			Message:   fmt.Sprintf("Job retries updated to %d", payload.NewRetries),
+			Timestamp: time.Now().Unix(),
+		}
+		response = CreateJobResponse("update_job_retries_response", request.RequestID, result)
 	}
 
 	return c.sendResponse(response)

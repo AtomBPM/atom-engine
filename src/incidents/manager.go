@@ -57,6 +57,7 @@ type IncidentManagerInterface interface {
 type IncidentManager struct {
 	storage storage.Storage
 	logger  logger.ComponentLogger
+	core    CoreInterface
 }
 
 // NewIncidentManager creates new incident manager
@@ -66,6 +67,12 @@ func NewIncidentManager(storage storage.Storage) *IncidentManager {
 		storage: storage,
 		logger:  logger.NewComponentLogger("incident-manager"),
 	}
+}
+
+// SetCore sets core interface for communicating with other components
+// Устанавливает core интерфейс для коммуникации с другими компонентами
+func (im *IncidentManager) SetCore(core CoreInterface) {
+	im.core = core
 }
 
 // CreateIncident creates a new incident

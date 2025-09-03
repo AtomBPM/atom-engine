@@ -10,6 +10,7 @@ package incidents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"atom-engine/src/core/logger"
@@ -228,12 +229,43 @@ func (im *IncidentManager) AutoResolveExpiredIncidents(ctx context.Context) erro
 // updateJobRetries updates job retries through core interface
 // Обновляет retries job через интерфейс core
 func (im *IncidentManager) updateJobRetries(ctx context.Context, jobKey string, newRetries int) error {
-	// This will be implemented when we integrate with core
-	// For now, just log the intent
-	im.logger.Info("Would update job retries",
+	if im.core == nil {
+		im.logger.Warn("Core interface not set, cannot update job retries")
+		return fmt.Errorf("core interface not set")
+	}
+
+	im.logger.Info("Updating job retries through core",
 		logger.String("job_key", jobKey),
 		logger.Int("new_retries", newRetries))
 
-	// TODO: Implement job retries update through core interface
+	// Import jobs package at the top of the file if not already done
+	// Create payload for update job retries message
+	payload := map[string]interface{}{
+		"job_key":     jobKey,
+		"new_retries": newRetries,
+	}
+
+	// Create JSON message
+	request := map[string]interface{}{
+		"type":    "update_job_retries",
+		"payload": payload,
+	}
+
+	messageJSON, err := json.Marshal(request)
+	if err != nil {
+		im.logger.Error("Failed to marshal update job retries message", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	// Send message to jobs component
+	if err := im.core.SendMessage("jobs", string(messageJSON)); err != nil {
+		im.logger.Error("Failed to send update job retries message", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to send message to jobs component: %w", err)
+	}
+
+	im.logger.Info("Job retries update message sent successfully",
+		logger.String("job_key", jobKey),
+		logger.Int("new_retries", newRetries))
+
 	return nil
 }

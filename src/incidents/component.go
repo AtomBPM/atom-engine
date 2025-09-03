@@ -46,6 +46,12 @@ type ComponentInterface interface {
 	CreateMessageErrorIncident(ctx context.Context, messageName, correlationKey, processInstanceID, message string) (*Incident, error)
 }
 
+// CoreInterface defines core methods needed by incidents component
+// Определяет методы core необходимые incidents компоненту
+type CoreInterface interface {
+	SendMessage(componentName, messageJSON string) error
+}
+
 // Component represents the incidents component
 // Представляет компонент инцидентов
 type Component struct {
@@ -64,6 +70,9 @@ type Component struct {
 
 	// Core manager
 	manager IncidentManagerInterface
+
+	// Core interface for communicating with other components
+	core CoreInterface
 }
 
 // NewComponent creates new incidents component
@@ -111,6 +120,16 @@ func (c *Component) Start() error {
 	c.ready = true
 	c.logger.Info("Incidents component started successfully")
 	return nil
+}
+
+// SetCore sets core interface for accessing other components
+// Устанавливает core интерфейс для доступа к другим компонентам
+func (c *Component) SetCore(core CoreInterface) {
+	c.core = core
+	// Pass core interface to manager
+	if im, ok := c.manager.(*IncidentManager); ok {
+		im.SetCore(core)
+	}
 }
 
 // Stop stops incidents component

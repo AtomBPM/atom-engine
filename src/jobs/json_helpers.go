@@ -63,6 +63,16 @@ func CreateCancelJobMessage(payload CancelJobPayload) (string, error) {
 	return marshalRequest(request)
 }
 
+// CreateUpdateJobRetriesMessage creates JSON message for updating job retries
+// Создает JSON сообщение для обновления retries job'а
+func CreateUpdateJobRetriesMessage(payload UpdateJobRetriesPayload) (string, error) {
+	request := JobRequest{
+		Type:    "update_job_retries",
+		Payload: structToMap(payload),
+	}
+	return marshalRequest(request)
+}
+
 // CreateListJobsMessage creates JSON message for listing jobs
 // Создает JSON сообщение для списка job'ов
 func CreateListJobsMessage(payload ListJobsPayload) (string, error) {

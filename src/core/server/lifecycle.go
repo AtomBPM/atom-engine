@@ -144,6 +144,11 @@ func (c *Core) Start() error {
 
 	// Initialize and start incidents component
 	// Инициализируем и запускаем incidents компонент
+
+	// Set core interface for job retries management
+	// Устанавливаем интерфейс core для управления retries работ
+	c.incidentsComp.SetCore(c)
+
 	err = c.incidentsComp.Init()
 	if err != nil {
 		logger.Error("Failed to initialize incidents component", logger.String("error", err.Error()))
