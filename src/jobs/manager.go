@@ -399,14 +399,15 @@ func (jm *JobManager) ThrowError(ctx context.Context, jobID, errorCode, errorMes
 	job.Metadata["errorCode"] = errorCode
 	job.Metadata["errorType"] = "BPMN_ERROR"
 
-	job.MarkAsFailed(errorMessage)
+	// Do not mark job as failed yet - let process engine decide after checking boundary events
+	// Не помечаем job как failed сразу - пусть process engine решает после проверки boundary events
 
 	if err := jm.storage.SaveJob(ctx, job); err != nil {
-		return fmt.Errorf("failed to save job with error: %w", err)
+		return fmt.Errorf("failed to save job with error metadata: %w", err)
 	}
 
-	// Update worker info
-	jm.updateWorkerActiveJobs(job.WorkerID, -1)
+	// Do not update worker info yet - job is still running until boundary event processing completes
+	// Не обновляем worker info пока - job все еще выполняется до завершения обработки boundary events
 
 	// Send error callback to process component
 	// Отправляем error callback в process компонент
@@ -430,29 +431,8 @@ func (jm *JobManager) ThrowError(ctx context.Context, jobID, errorCode, errorMes
 				logger.String("errorCode", errorCode))
 		}
 
-		// Create incident for BPMN error (only if no boundary event to handle it)
-		// Создаем инцидент для BPMN ошибки (только если нет boundary event для обработки)
-		err := jm.component.CreateIncident(
-			"BPMN_ERROR",
-			job.ElementID,
-			job.ProcessInstanceID,
-			job.ID,
-			job.Type,
-			job.WorkerID,
-			fmt.Sprintf("%s: %s", errorCode, errorMessage),
-			0, // BPMN errors don't have retries
-		)
-		if err != nil {
-			jm.logger.Error("Failed to create incident for BPMN error",
-				logger.String("jobID", job.ID),
-				logger.String("errorCode", errorCode),
-				logger.String("error", err.Error()))
-		} else {
-			jm.logger.Info("Incident created for BPMN error",
-				logger.String("jobID", job.ID),
-				logger.String("elementID", job.ElementID),
-				logger.String("errorCode", errorCode))
-		}
+		// Do not create incident here - let process engine create incident only if no boundary event found
+		// Не создаем инцидент здесь - пусть process engine создает инцидент только если boundary event не найден
 	}
 
 	jm.logger.Info("Error thrown for job", logger.String("errorCode", errorCode))

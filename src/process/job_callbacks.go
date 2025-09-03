@@ -64,7 +64,27 @@ func (jc *JobCallbacks) HandleJobCallback(jobID, elementID, tokenID, status, err
 		logger.String("status", status),
 		logger.String("error_message", errorMessage))
 
-	// Load and validate token using helper
+	// Handle ERROR_THROWN differently - load token directly without state validation
+	if status == "ERROR_THROWN" {
+		// Load token directly for BPMN error processing
+		token, err := jc.storage.LoadToken(tokenID)
+		if err != nil {
+			logger.Error("Failed to load token for BPMN error callback",
+				logger.String("token_id", tokenID),
+				logger.String("error", err.Error()))
+			return fmt.Errorf("failed to load token %s: %w", tokenID, err)
+		}
+
+		logger.Info("Token loaded for BPMN error processing",
+			logger.String("token_id", tokenID),
+			logger.String("token_state", string(token.State)),
+			logger.String("waiting_for", token.WaitingFor))
+
+		// BPMN business error - activate error boundary events
+		return jc.handleJobBPMNError(token, jobID, elementID, errorMessage, variables)
+	}
+
+	// For other statuses, load and validate token using helper
 	expectedWaitingFor := fmt.Sprintf("job:%s", jobID)
 	token, err := jc.callbackHelper.LoadAndValidateToken(tokenID, expectedWaitingFor)
 	if err != nil {
@@ -78,9 +98,6 @@ func (jc *JobCallbacks) HandleJobCallback(jobID, elementID, tokenID, status, err
 		if errorMessage != "" {
 			return jc.handleJobFailure(token, jobID, elementID, errorMessage, variables)
 		}
-	case "ERROR_THROWN":
-		// BPMN business error - activate error boundary events
-		return jc.handleJobBPMNError(token, jobID, elementID, errorMessage, variables)
 	}
 
 	// Process successful completion callback and continue execution using helper
@@ -234,8 +251,17 @@ func (jc *JobCallbacks) handleJobBPMNError(token *models.Token, jobID, elementID
 			logger.String("token_id", token.TokenID),
 			logger.String("error_code", errorCode))
 
-		// No error boundary found - create incident like in job failure
-		// Граничного события ошибки не найдено - создаем инцидент как при провале job
+		// No error boundary found - mark job as failed and create incident
+		// Граничного события ошибки не найдено - помечаем job как failed и создаем инцидент
+
+		// Mark job as failed via jobs component
+		if err := jc.failJob(jobID, fmt.Sprintf("BPMN Error: %s", errorMessage)); err != nil {
+			logger.Error("Failed to mark job as failed after unhandled BPMN error",
+				logger.String("job_id", jobID),
+				logger.String("error_code", errorCode),
+				logger.String("error", err.Error()))
+		}
+
 		err := jc.createBPMNErrorIncident(token, elementID, errorCode, errorMessage)
 		if err != nil {
 			logger.Error("Failed to create BPMN error incident",
@@ -339,6 +365,40 @@ func (jc *JobCallbacks) cancelJob(jobID string) error {
 	// Last fallback: log warning
 	// Последний фоллбэк: логируем предупреждение
 	logger.Warn("Jobs component doesn't support cancellation",
+		logger.String("job_id", jobID))
+
+	return nil
+}
+
+// failJob marks specific job as failed via jobs component
+// Помечает конкретный job как failed через jobs компонент
+func (jc *JobCallbacks) failJob(jobID, errorMessage string) error {
+	if jc.core == nil {
+		return fmt.Errorf("core interface not set")
+	}
+
+	jobsComp := jc.core.GetJobsComponent()
+	if jobsComp == nil {
+		return fmt.Errorf("jobs component not available")
+	}
+
+	// Try to fail job via jobs component interface with retries and error message
+	// Пытаемся пометить job как failed через интерфейс jobs компонента с retries и сообщением об ошибке
+	if jobsFailMethod, ok := jobsComp.(interface {
+		FailJob(jobKey string, retries int, errorMessage string) error
+	}); ok {
+		if err := jobsFailMethod.FailJob(jobID, 0, errorMessage); err != nil {
+			return fmt.Errorf("failed to mark job as failed via jobs component: %w", err)
+		}
+		logger.Info("Job marked as failed via jobs component",
+			logger.String("job_id", jobID),
+			logger.String("error_message", errorMessage))
+		return nil
+	}
+
+	// Fallback: log warning
+	// Фоллбэк: логируем предупреждение
+	logger.Warn("Jobs component doesn't support FailJob method",
 		logger.String("job_id", jobID))
 
 	return nil
