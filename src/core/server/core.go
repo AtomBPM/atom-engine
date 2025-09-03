@@ -14,9 +14,12 @@ import (
 	"sync"
 	"time"
 
+	"atom-engine/src/core/auth"
 	"atom-engine/src/core/config"
 	"atom-engine/src/core/grpc"
 	"atom-engine/src/core/models"
+	"atom-engine/src/core/restapi"
+	"atom-engine/src/core/restapi/handlers"
 	"atom-engine/src/expression"
 	"atom-engine/src/incidents"
 	"atom-engine/src/jobs"
@@ -33,6 +36,7 @@ type Core struct {
 	config        *config.Config
 	storage       storage.Storage
 	grpcServer    *grpc.Server
+	restServer    *restapi.Server
 	timewheelComp *timewheel.Component
 
 	processComp    *process.Component
@@ -41,6 +45,7 @@ type Core struct {
 	messagesComp   *messages.Component
 	expressionComp *expression.Component
 	incidentsComp  *incidents.Component
+	authComp       auth.Component
 	loggerReady    bool
 	mu             sync.RWMutex
 	running        bool
@@ -98,6 +103,10 @@ func NewCoreWithConfig(cfg *config.Config) (*Core, error) {
 	// Инициализируем incidents компонент с storage
 	incidentsComp := incidents.NewComponent(cfg, storageInstance)
 
+	// Initialize auth component
+	// Инициализируем auth компонент
+	authComp := auth.NewComponent()
+
 	return &Core{
 		config:        cfg,
 		storage:       storageInstance,
@@ -109,6 +118,7 @@ func NewCoreWithConfig(cfg *config.Config) (*Core, error) {
 		messagesComp:   messagesComp,
 		expressionComp: expressionComp,
 		incidentsComp:  incidentsComp,
+		authComp:       authComp,
 		loggerReady:    false,
 		running:        false,
 	}, nil
@@ -139,6 +149,11 @@ func (c *Core) GetParserComponent() interface{} {
 	return c.parserComp
 }
 
+// GetAuthComponent returns auth component
+func (c *Core) GetAuthComponent() interface{} {
+	return c.authComp
+}
+
 // GetStorage returns storage instance
 func (c *Core) GetStorage() interface{} {
 	return c.storage
@@ -163,6 +178,45 @@ func (c *Core) SendMessage(componentName, messageJSON string) error {
 	}
 
 	return processor.ProcessMessage(context.Background(), messageJSON)
+}
+
+
+
+
+
+// REST API interface implementations
+// Реализации интерфейсов для REST API
+
+// REST API implementations that override gRPC methods for handlers
+// These methods provide REST-specific implementations
+
+// Storage interfaces
+func (c *Core) GetStorageStatusForREST() (*handlers.StorageStatusResponse, error) {
+	grpcStatus, err := c.GetStorageStatus()
+	if err != nil {
+		return nil, err
+	}
+	return &handlers.StorageStatusResponse{
+		IsConnected:   grpcStatus.IsConnected,
+		IsHealthy:     grpcStatus.IsHealthy,
+		Status:        grpcStatus.Status,
+		UptimeSeconds: grpcStatus.UptimeSeconds,
+	}, nil
+}
+
+func (c *Core) GetStorageInfoForREST() (*handlers.StorageInfoResponse, error) {
+	grpcInfo, err := c.GetStorageInfo()
+	if err != nil {
+		return nil, err
+	}
+	return &handlers.StorageInfoResponse{
+		TotalSizeBytes: grpcInfo.TotalSizeBytes,
+		UsedSizeBytes:  grpcInfo.UsedSizeBytes,
+		FreeSizeBytes:  grpcInfo.FreeSizeBytes,
+		TotalKeys:      grpcInfo.TotalKeys,
+		DatabasePath:   grpcInfo.DatabasePath,
+		Statistics:     grpcInfo.Statistics,
+	}, nil
 }
 
 // getComponentByName returns component by name

@@ -30,7 +30,7 @@ grpc:
 # Конфигурация REST API сервера
 rest_api:
   host: "localhost"
-  port: 8080
+  port: 27555
 
 # Storage configuration (relative to base_path)
 # Конфигурация хранилища (относительно base_path)
@@ -86,3 +86,54 @@ logger:
   # Enable console output alongside file logging
   # Включить вывод в консоль наряду с записью в файл
   enable_console: true
+
+# Authorization configuration
+# Конфигурация авторизации
+auth:
+  # Enable/disable authentication (disabled by default for backward compatibility)
+  # Включить/отключить аутентификацию (отключена по умолчанию для обратной совместимости)
+  enabled: false
+  
+  # Global IP whitelist for authorization (localhost always allowed)
+  # Глобальный whitelist IP адресов для авторизации (localhost всегда разрешен)
+  allowed_hosts:
+    - "192.168.1.0/24"      # Local network
+    - "10.0.0.0/8"          # Internal network
+    - "172.16.0.0/12"       # Docker networks
+    # - "203.0.113.10"        # Specific external server
+  
+  # API keys for client authentication
+  # API ключи для аутентификации клиентов
+  api_keys:
+    # Example API key for development (CHANGE IN PRODUCTION!)
+    # Примерный API ключ для разработки (ИЗМЕНИТЬ В ПРОДАКШЕНЕ!)
+    - key: "ak_dev_example_AbC123XyZ456"
+      name: "Development Key"
+      permissions: ["*"]  # Full access
+      # allowed_hosts: ["192.168.1.100"]  # Optional per-key IP restrictions
+    
+    # Example monitoring service key
+    # Примерный ключ для мониторинга
+    # - key: "ak_monitor_service_dEf456UvW789"
+    #   name: "Monitoring Service"
+    #   permissions: ["read"]  # Read-only access
+    
+    # Example backup service key
+    # Примерный ключ для backup сервиса
+    # - key: "ak_backup_service_gHi789RsT012"
+    #   name: "Backup Service"
+    #   permissions: ["storage", "process:read"]
+    #   allowed_hosts: ["10.0.0.10"]  # Only specific host
+  
+  # Rate limiting configuration
+  # Конфигурация ограничения запросов
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100  # Maximum requests per minute per client/API key
+  
+  # Audit logging configuration
+  # Конфигурация аудита безопасности
+  audit:
+    enabled: true
+    log_failed_attempts: true    # Log failed authentication attempts
+    log_successful_auth: false   # Log successful authentications (can be noisy)

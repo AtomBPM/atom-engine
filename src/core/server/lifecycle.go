@@ -161,6 +161,20 @@ func (c *Core) Start() error {
 		return fmt.Errorf("failed to start incidents component: %w", err)
 	}
 
+	// Initialize and start auth component
+	// Инициализируем и запускаем auth компонент
+	err = c.authComp.Initialize(&c.config.Auth)
+	if err != nil {
+		logger.Error("Failed to initialize auth component", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to initialize auth component: %w", err)
+	}
+
+	err = c.authComp.Start()
+	if err != nil {
+		logger.Error("Failed to start auth component", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to start auth component: %w", err)
+	}
+
 	// Log startup event
 	err = c.storage.LogSystemEvent(models.EventTypeStartup, models.StatusInProgress, "Starting Atom Engine")
 	if err != nil {
@@ -172,6 +186,13 @@ func (c *Core) Start() error {
 	if err != nil {
 		logger.Error("Failed to start gRPC server", logger.String("error", err.Error()))
 		return fmt.Errorf("failed to start gRPC server: %w", err)
+	}
+
+	// Start REST API server
+	err = c.startRESTServer()
+	if err != nil {
+		logger.Error("Failed to start REST API server", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to start REST API server: %w", err)
 	}
 
 	// Start timewheel response processor
@@ -235,6 +256,9 @@ func (c *Core) Stop() error {
 	// Stop gRPC server
 	c.stopGRPCServer()
 
+	// Stop REST API server
+	c.stopRESTServer()
+
 	// Stop expression component
 	// Останавливаем expression компонент
 	if c.expressionComp != nil {
@@ -254,6 +278,17 @@ func (c *Core) Stop() error {
 			logger.Error("Failed to stop incidents component", logger.String("error", err.Error()))
 		} else {
 			logger.Info("Incidents component stopped")
+		}
+	}
+
+	// Stop auth component
+	// Останавливаем auth компонент
+	if c.authComp != nil {
+		err := c.authComp.Stop()
+		if err != nil {
+			logger.Error("Failed to stop auth component", logger.String("error", err.Error()))
+		} else {
+			logger.Info("Auth component stopped")
 		}
 	}
 

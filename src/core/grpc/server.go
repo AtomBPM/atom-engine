@@ -23,6 +23,7 @@ import (
 	"atom-engine/proto/parser/parserpb"
 	"atom-engine/proto/process/processpb"
 	"atom-engine/proto/timewheel/timewheelpb"
+	"atom-engine/src/core/auth"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
 )
@@ -53,6 +54,7 @@ type CoreInterface interface {
 	GetExpressionComponent() interface{}
 	GetIncidentsComponent() interface{}
 	GetStorage() interface{}
+	GetAuthComponent() interface{} // Returns auth.Component
 
 	// JSON Message Routing
 	SendMessage(componentName, messageJSON string) error
@@ -156,7 +158,22 @@ func (s *Server) Start() error {
 	}
 	s.listener = listener
 
-	s.grpcServer = grpc.NewServer()
+	// Setup interceptors
+	var opts []grpc.ServerOption
+
+	// Add auth interceptor if auth component is available
+	if authComp := s.core.GetAuthComponent(); authComp != nil {
+		if authComponent, ok := authComp.(auth.Component); ok {
+			authInterceptor := NewAuthInterceptor(authComponent)
+			opts = append(opts,
+				grpc.UnaryInterceptor(authInterceptor.UnaryInterceptor()),
+				grpc.StreamInterceptor(authInterceptor.StreamInterceptor()),
+			)
+			logger.Info("Auth interceptors enabled for gRPC server")
+		}
+	}
+
+	s.grpcServer = grpc.NewServer(opts...)
 
 	// Register storage service
 	RegisterStorageServiceServer(s.grpcServer, &storageServiceServer{core: s.core})

@@ -28,6 +28,7 @@ type Config struct {
 	Logger       LoggerConfig   `yaml:"logger"`
 	Storage      StorageConfig  `yaml:"storage"`
 	BPMN         BPMNConfig     `yaml:"bpmn"`
+	Auth         AuthConfig     `yaml:"auth"`
 }
 
 // DatabaseConfig holds database configuration
@@ -83,6 +84,37 @@ type BPMNConfig struct {
 	Path            string `yaml:"path"`
 	StorageOriginal bool   `yaml:"storage_original"`
 	Validation      bool   `yaml:"validation"`
+}
+
+// AuthConfig holds auth configuration
+// Конфигурация авторизации
+type AuthConfig struct {
+	Enabled      bool            `yaml:"enabled"`
+	AllowedHosts []string        `yaml:"allowed_hosts"`
+	APIKeys      []APIKeyConfig  `yaml:"api_keys"`
+	RateLimit    RateLimitConfig `yaml:"rate_limiting"`
+	Audit        AuditConfig     `yaml:"audit"`
+}
+
+// APIKeyConfig represents an API key configuration
+type APIKeyConfig struct {
+	Key          string   `yaml:"key"`
+	Name         string   `yaml:"name"`
+	Permissions  []string `yaml:"permissions"`
+	AllowedHosts []string `yaml:"allowed_hosts,omitempty"`
+}
+
+// RateLimitConfig represents rate limiting configuration
+type RateLimitConfig struct {
+	Enabled           bool `yaml:"enabled"`
+	RequestsPerMinute int  `yaml:"requests_per_minute"`
+}
+
+// AuditConfig represents audit logging configuration
+type AuditConfig struct {
+	Enabled           bool `yaml:"enabled"`
+	LogFailedAttempts bool `yaml:"log_failed_attempts"`
+	LogSuccessfulAuth bool `yaml:"log_successful_auth"`
 }
 
 // LoadConfig loads configuration from YAML file
@@ -155,7 +187,7 @@ func setDefaults(config *Config) {
 		config.RestAPI.Host = "localhost"
 	}
 	if config.RestAPI.Port == 0 {
-		config.RestAPI.Port = 8080
+		config.RestAPI.Port = 27555
 	}
 
 	// Database defaults
@@ -201,6 +233,13 @@ func setDefaults(config *Config) {
 	}
 	if !config.BPMN.Validation {
 		config.BPMN.Validation = true // Default to true
+	}
+
+	// Auth defaults
+	// Auth is disabled by default for backward compatibility
+	// Rate limiting defaults
+	if config.Auth.RateLimit.RequestsPerMinute == 0 {
+		config.Auth.RateLimit.RequestsPerMinute = 100 // Default 100 requests per minute
 	}
 }
 

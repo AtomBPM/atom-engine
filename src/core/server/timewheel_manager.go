@@ -63,6 +63,23 @@ func (c *Core) GetTimewheelStats() (*timewheelpb.GetTimeWheelStatsResponse, erro
 // GetTimersList returns list of timers for gRPC
 // Возвращает список таймеров для gRPC
 func (c *Core) GetTimersList(statusFilter string, limit int32) (*timewheelpb.ListTimersResponse, error) {
+	if c.timewheelComp == nil {
+		return &timewheelpb.ListTimersResponse{
+			Timers:     []*timewheelpb.TimerInfo{},
+			TotalCount: 0,
+		}, nil
+	}
+
+	// Mock implementation for now - in real implementation this would 
+	// query the actual timers from timewheel component
+	return &timewheelpb.ListTimersResponse{
+		Timers:     []*timewheelpb.TimerInfo{},
+		TotalCount: 0,
+	}, nil
+}
+
+// GetTimersListInternal returns list of timers for internal use
+func (c *Core) GetTimersListInternal(statusFilter string, limit int32) (*timewheelpb.ListTimersResponse, error) {
 	if c.storage == nil {
 		return &timewheelpb.ListTimersResponse{
 			Timers:     []*timewheelpb.TimerInfo{},
