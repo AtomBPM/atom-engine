@@ -191,7 +191,16 @@ func (e *Engine) ExecuteToken(token *models.Token) error {
 	}
 
 	// Find executor for element type
-	executor, executorExists := e.executorRegistry.GetExecutor(elementType)
+	var executor ElementExecutor
+	var executorExists bool
+
+	// Special handling for service tasks (HTTP connector vs regular service task)
+	if elementType == "serviceTask" {
+		executor, executorExists = e.executorRegistry.GetServiceTaskExecutor(elementMap)
+	} else {
+		executor, executorExists = e.executorRegistry.GetExecutor(elementType)
+	}
+
 	if !executorExists {
 		return fmt.Errorf("no executor found for element type: %s", elementType)
 	}

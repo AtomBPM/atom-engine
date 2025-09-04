@@ -84,9 +84,26 @@ func (d *DaemonCommand) ProcessStart() error {
 			return fmt.Errorf("invalid JSON variables: %w", err)
 		}
 
-		// Convert to string map for protobuf
+		// Convert to string map for protobuf, preserving JSON structure
 		for key, value := range jsonVars {
-			variablesMap[key] = fmt.Sprintf("%v", value)
+			// For complex objects, serialize back to JSON
+			// Для сложных объектов сериализуем обратно в JSON
+			switch v := value.(type) {
+			case map[string]interface{}, []interface{}, map[string]string, []string:
+				// Serialize complex types back to JSON
+				jsonBytes, err := json.Marshal(v)
+				if err != nil {
+					logger.Warn("Failed to serialize variable to JSON, using string representation",
+						logger.String("key", key),
+						logger.String("error", err.Error()))
+					variablesMap[key] = fmt.Sprintf("%v", value)
+				} else {
+					variablesMap[key] = string(jsonBytes)
+				}
+			default:
+				// For simple types, use string representation
+				variablesMap[key] = fmt.Sprintf("%v", value)
+			}
 		}
 		logger.Debug("Parsed variables", logger.Int("var_count", len(variablesMap)))
 	}

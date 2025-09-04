@@ -360,6 +360,12 @@ func (p *TaskParser) parseExtensionElements(element *XMLElement) map[string]inte
 		case "formDefinition":
 			formDef := p.parseZeebeFormDefinition(child)
 			extElement["form_definition"] = formDef
+		case "ioMapping":
+			ioMapping := p.parseZeebeIOMapping(child)
+			extElement["io_mapping"] = ioMapping
+		case "taskHeaders":
+			taskHeaders := p.parseZeebeTaskHeaders(child)
+			extElement["task_headers"] = taskHeaders
 		}
 
 		extensions = append(extensions, extElement)
@@ -443,6 +449,110 @@ func (p *TaskParser) parseZeebeFormDefinition(element *XMLElement) map[string]in
 	}
 
 	return formDef
+}
+
+// parseZeebeIOMapping parses Zeebe ioMapping element
+// Парсинг ioMapping элемента Zeebe
+func (p *TaskParser) parseZeebeIOMapping(element *XMLElement) map[string]interface{} {
+	ioMapping := make(map[string]interface{})
+
+	inputs := make([]map[string]interface{}, 0)
+	outputs := make([]map[string]interface{}, 0)
+
+	for _, child := range element.Children {
+		switch child.XMLName.Local {
+		case "input":
+			input := p.parseZeebeInput(child)
+			inputs = append(inputs, input)
+		case "output":
+			output := p.parseZeebeOutput(child)
+			outputs = append(outputs, output)
+		}
+	}
+
+	if len(inputs) > 0 {
+		ioMapping["inputs"] = inputs
+		ioMapping["input_count"] = len(inputs)
+	}
+	if len(outputs) > 0 {
+		ioMapping["outputs"] = outputs
+		ioMapping["output_count"] = len(outputs)
+	}
+
+	return ioMapping
+}
+
+// parseZeebeInput parses Zeebe input element
+// Парсинг input элемента Zeebe
+func (p *TaskParser) parseZeebeInput(element *XMLElement) map[string]interface{} {
+	input := make(map[string]interface{})
+
+	for _, attr := range element.Attributes {
+		switch attr.Name.Local {
+		case "source":
+			input["source"] = attr.Value
+		case "target":
+			input["target"] = attr.Value
+		}
+	}
+
+	return input
+}
+
+// parseZeebeOutput parses Zeebe output element
+// Парсинг output элемента Zeebe
+func (p *TaskParser) parseZeebeOutput(element *XMLElement) map[string]interface{} {
+	output := make(map[string]interface{})
+
+	for _, attr := range element.Attributes {
+		switch attr.Name.Local {
+		case "source":
+			output["source"] = attr.Value
+		case "target":
+			output["target"] = attr.Value
+		}
+	}
+
+	return output
+}
+
+// parseZeebeTaskHeaders parses Zeebe taskHeaders element
+// Парсинг taskHeaders элемента Zeebe
+func (p *TaskParser) parseZeebeTaskHeaders(element *XMLElement) map[string]interface{} {
+	taskHeaders := make(map[string]interface{})
+
+	headers := make([]map[string]interface{}, 0)
+
+	for _, child := range element.Children {
+		if child.XMLName.Local == "header" {
+			header := p.parseZeebeHeader(child)
+			headers = append(headers, header)
+		}
+	}
+
+	if len(headers) > 0 {
+		taskHeaders["headers"] = headers
+		taskHeaders["header_count"] = len(headers)
+	}
+
+	return taskHeaders
+}
+
+// parseZeebeHeader parses Zeebe header element
+// Парсинг header элемента Zeebe
+func (p *TaskParser) parseZeebeHeader(element *XMLElement) map[string]interface{} {
+	header := make(map[string]interface{})
+
+	for _, attr := range element.Attributes {
+		switch attr.Name.Local {
+		case "key":
+			header["key"] = attr.Value
+		case "value":
+			header["value"] = attr.Value
+		}
+	}
+
+	return header
 }
 
 // GetElementType returns element type (generic for all tasks)

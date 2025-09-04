@@ -43,6 +43,8 @@ func (er *ExecutorRegistry) registerExecutors() {
 	logger.Info("Registering ServiceTaskExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))
 	er.RegisterExecutor(NewServiceTaskExecutor(er.component))
 
+	// Note: HttpConnectorExecutor is handled dynamically in GetServiceTaskExecutor
+
 	// Register gateway executors with process component access
 	logger.Info("Registering ExclusiveGatewayExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))
 	er.RegisterExecutor(NewExclusiveGatewayExecutor(er.component))
@@ -79,4 +81,98 @@ func (er *ExecutorRegistry) RegisterExecutor(executor ElementExecutor) {
 func (er *ExecutorRegistry) GetExecutor(elementType string) (ElementExecutor, bool) {
 	executor, exists := er.executors[elementType]
 	return executor, exists
+}
+
+// GetServiceTaskExecutor gets appropriate executor for service task
+// Получает подходящий исполнитель для service task
+func (er *ExecutorRegistry) GetServiceTaskExecutor(element map[string]interface{}) (ElementExecutor, bool) {
+	// Try HTTP connector executor first
+	httpExecutor := NewHttpConnectorExecutor(er.component)
+	if er.isHttpConnector(element) {
+		return httpExecutor, true
+	}
+
+	// Use regular service task executor
+	return NewServiceTaskExecutor(er.component), true
+}
+
+// isHttpConnector checks if element is HTTP connector
+// Проверяет, является ли элемент HTTP коннектором
+func (er *ExecutorRegistry) isHttpConnector(element map[string]interface{}) bool {
+	logger.Debug("Checking if element is HTTP connector", logger.String("element_id", getStringValue(element["id"])))
+
+	// Look for extension elements
+	extensionElements, exists := element["extension_elements"]
+	if !exists {
+		logger.Debug("No extension_elements found")
+		return false
+	}
+
+	extElementsList, ok := extensionElements.([]interface{})
+	if !ok {
+		logger.Debug("extension_elements is not array")
+		return false
+	}
+
+	// Find taskDefinition in extension elements
+	for _, extElement := range extElementsList {
+		extElementMap, ok := extElement.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		extensions, exists := extElementMap["extensions"]
+		if !exists {
+			continue
+		}
+
+		extensionsList, ok := extensions.([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, ext := range extensionsList {
+			extMap, ok := ext.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			extType, exists := extMap["type"]
+			if !exists || extType != "taskDefinition" {
+				continue
+			}
+
+			logger.Debug("Found taskDefinition extension")
+
+			// Found taskDefinition - check type
+			taskDef, exists := extMap["task_definition"]
+			if !exists {
+				logger.Debug("No task_definition data found")
+				continue
+			}
+
+			taskDefMap, ok := taskDef.(map[string]interface{})
+			if !ok {
+				logger.Debug("task_definition is not a map")
+				continue
+			}
+
+			jobType, _ := taskDefMap["type"].(string)
+			logger.Debug("Task definition type found", logger.String("type", jobType))
+			isHttp := jobType == "io.camunda:http-json:1"
+			logger.Debug("HTTP connector check result", logger.Bool("isHttpConnector", isHttp))
+			return isHttp
+		}
+	}
+
+	logger.Debug("No taskDefinition found")
+	return false
+}
+
+// getStringValue safely extracts string value from interface{}
+func getStringValue(val interface{}) string {
+	if str, ok := val.(string); ok {
+		return str
+	}
+	return ""
 }

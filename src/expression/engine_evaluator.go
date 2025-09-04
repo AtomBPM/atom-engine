@@ -9,6 +9,7 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package expression
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -76,6 +77,26 @@ func (ee *EngineEvaluator) EvaluateExpressionEngine(expression interface{}, vari
 				ee.logger.Debug("Engine FEEL variable found",
 					logger.String("variable", feelExpr),
 					logger.Any("value", value))
+
+				// If value is JSON string, try to parse it
+				// Если значение это JSON строка, пытаемся её распарсить
+				if strValue, ok := value.(string); ok {
+					// Check if it looks like JSON (starts with { or [)
+					if (strings.HasPrefix(strValue, "{") && strings.HasSuffix(strValue, "}")) ||
+						(strings.HasPrefix(strValue, "[") && strings.HasSuffix(strValue, "]")) {
+						var jsonValue interface{}
+						if err := json.Unmarshal([]byte(strValue), &jsonValue); err == nil {
+							ee.logger.Debug("Engine parsed JSON variable",
+								logger.String("variable", feelExpr),
+								logger.Any("parsed_value", jsonValue))
+							return jsonValue, nil
+						}
+						ee.logger.Debug("Engine failed to parse JSON, returning as string",
+							logger.String("variable", feelExpr),
+							logger.String("json_string", strValue))
+					}
+				}
+
 				return value, nil
 			}
 			ee.logger.Debug("Engine FEEL expression as literal",
