@@ -182,10 +182,32 @@ func (s *processServiceServer) DeployProcess(ctx context.Context, req *processpb
 // ListProcessInstances lists process instances
 // Получает список экземпляров процессов
 func (s *processServiceServer) ListProcessInstances(ctx context.Context, req *processpb.ListProcessInstancesRequest) (*processpb.ListProcessInstancesResponse, error) {
+	// Set defaults for pagination and sorting parameters
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20 // Default page size
+	}
+	page := req.Page
+	if page <= 0 {
+		page = 1 // Default page
+	}
+	sortBy := req.SortBy
+	if sortBy == "" {
+		sortBy = "started_at" // Default sort field
+	}
+	sortOrder := req.SortOrder
+	if sortOrder == "" {
+		sortOrder = "DESC" // Default sort order
+	}
+
 	logger.Info("ListProcessInstances request",
 		logger.String("status_filter", req.StatusFilter),
 		logger.String("process_key_filter", req.ProcessKeyFilter),
-		logger.Int("limit", int(req.Limit)))
+		logger.Int("limit", int(req.Limit)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)),
+		logger.String("sort_by", sortBy),
+		logger.String("sort_order", sortOrder))
 
 	// Get process component
 	processComp := s.core.GetProcessComponent()
@@ -196,14 +218,68 @@ func (s *processServiceServer) ListProcessInstances(ctx context.Context, req *pr
 		}, nil
 	}
 
-	// Call process component
-	instances, err := processComp.ListProcessInstances(req.StatusFilter, req.ProcessKeyFilter, int(req.Limit))
+	// Call process component (load all for sorting/pagination)
+	instances, err := processComp.ListProcessInstances(req.StatusFilter, req.ProcessKeyFilter, 0)
 	if err != nil {
 		logger.Error("Failed to list process instances", logger.String("error", err.Error()))
 		return &processpb.ListProcessInstancesResponse{
 			Success: false,
 			Message: err.Error(),
 		}, nil
+	}
+
+	// Store total count before pagination
+	totalCount := len(instances)
+
+	// Apply sorting
+	sort.Slice(instances, func(i, j int) bool {
+		switch sortBy {
+		case "started_at":
+			if sortOrder == "ASC" {
+				return instances[i].StartedAt < instances[j].StartedAt
+			}
+			return instances[i].StartedAt > instances[j].StartedAt
+		case "updated_at":
+			if sortOrder == "ASC" {
+				return instances[i].UpdatedAt < instances[j].UpdatedAt
+			}
+			return instances[i].UpdatedAt > instances[j].UpdatedAt
+		case "instance_id":
+			if sortOrder == "ASC" {
+				return instances[i].InstanceID < instances[j].InstanceID
+			}
+			return instances[i].InstanceID > instances[j].InstanceID
+		default:
+			// Default to started_at DESC
+			return instances[i].StartedAt > instances[j].StartedAt
+		}
+	})
+
+	// Calculate pagination
+	totalPages := (totalCount + int(pageSize) - 1) / int(pageSize)
+	offset := (int(page) - 1) * int(pageSize)
+
+	// Apply pagination
+	var paginatedInstances []*ProcessInstanceResult
+	if offset < len(instances) {
+		end := offset + int(pageSize)
+		if end > len(instances) {
+			end = len(instances)
+		}
+		paginatedInstances = instances[offset:end]
+	}
+
+	// Use paginated instances for new pagination system or legacy limit for old system
+	if req.PageSize > 0 || (req.PageSize == 0 && req.Limit == 0) {
+		// New pagination system (also default when no parameters specified)
+		instances = paginatedInstances
+	} else if req.Limit > 0 && req.PageSize <= 0 {
+		// Legacy limit system for backward compatibility
+		if len(instances) > int(req.Limit) {
+			instances = instances[:req.Limit]
+			totalCount = len(instances)
+			totalPages = 1
+		}
 	}
 
 	// Convert to protobuf format
@@ -231,12 +307,21 @@ func (s *processServiceServer) ListProcessInstances(ctx context.Context, req *pr
 		protoInstances = append(protoInstances, protoInstance)
 	}
 
-	logger.Info("Process instances listed successfully", logger.Int("count", len(protoInstances)))
+	logger.Info("Process instances listed successfully",
+		logger.Int("count", len(protoInstances)),
+		logger.Int("total_count", totalCount),
+		logger.Int("page", int(page)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("total_pages", totalPages))
 
 	return &processpb.ListProcessInstancesResponse{
-		Instances: protoInstances,
-		Success:   true,
-		Message:   fmt.Sprintf("found %d process instances", len(protoInstances)),
+		Instances:  protoInstances,
+		Success:    true,
+		Message:    fmt.Sprintf("found %d process instances (page %d of %d)", len(protoInstances), page, totalPages),
+		TotalCount: int32(totalCount),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 
@@ -423,7 +508,7 @@ func (s *processServiceServer) ListTokens(ctx context.Context, req *processpb.Li
 		protoTokens = append(protoTokens, protoToken)
 	}
 
-	logger.Info("Tokens listed successfully", 
+	logger.Info("Tokens listed successfully",
 		logger.Int("count", len(protoTokens)),
 		logger.Int("total_count", totalCount),
 		logger.Int("page", int(page)),

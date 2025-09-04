@@ -96,8 +96,12 @@ message CancelProcessInstanceResponse {
 // Request for listing process instances
 message ListProcessInstancesRequest {
   string status_filter = 1;    // Optional status filter (ACTIVE, COMPLETED, CANCELLED)
-  int32 limit = 2;             // Optional limit for number of results
+  int32 limit = 2;             // Optional limit for number of results (deprecated, use page_size)
   string process_key_filter = 3; // Optional filter by process key
+  int32 page_size = 4;         // Number of items per page (default: 20)
+  int32 page = 5;              // Page number (1-based, default: 1)
+  string sort_by = 6;          // Sort field (default: "started_at")
+  string sort_order = 7;       // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 // Response for listing process instances
@@ -105,6 +109,10 @@ message ListProcessInstancesResponse {
   repeated ProcessInstanceInfo instances = 1;
   bool success = 2;
   string message = 3;
+  int32 total_count = 4;        // Total number of process instances matching filters
+  int32 page = 5;               // Current page number
+  int32 page_size = 6;          // Number of items per page
+  int32 total_pages = 7;        // Total number of pages
 }
 
 // Process instance information

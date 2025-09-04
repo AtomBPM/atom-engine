@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"atom-engine/proto/incidents/incidentspb"
@@ -304,10 +305,32 @@ func (s *incidentsServiceServer) GetIncident(ctx context.Context, req *incidents
 
 // ListIncidents lists incidents with filtering
 func (s *incidentsServiceServer) ListIncidents(ctx context.Context, req *incidentspb.ListIncidentsRequest) (*incidentspb.ListIncidentsResponse, error) {
-	logger.Info("ListIncidents gRPC request")
-
-	// Create JSON message for incidents component
+	// Set defaults for pagination and sorting parameters
 	filter := req.Filter
+	pageSize := filter.PageSize
+	if pageSize <= 0 {
+		pageSize = 20 // Default page size
+	}
+	page := filter.Page
+	if page <= 0 {
+		page = 1 // Default page
+	}
+	sortBy := filter.SortBy
+	if sortBy == "" {
+		sortBy = "created_at" // Default sort field
+	}
+	sortOrder := filter.SortOrder
+	if sortOrder == "" {
+		sortOrder = "DESC" // Default sort order
+	}
+
+	logger.Info("ListIncidents gRPC request",
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)),
+		logger.String("sort_by", sortBy),
+		logger.String("sort_order", sortOrder))
+
+	// Create JSON message for incidents component - load all for sorting/pagination
 	payload := incidents.ListIncidentsPayload{
 		Status:            convertProtoIncidentStatusArray(filter.Status),
 		Type:              convertProtoIncidentTypeArray(filter.Type),
@@ -316,8 +339,8 @@ func (s *incidentsServiceServer) ListIncidents(ctx context.Context, req *inciden
 		ElementID:         filter.ElementId,
 		JobKey:            filter.JobKey,
 		WorkerID:          filter.WorkerId,
-		Limit:             int(filter.Limit),
-		Offset:            int(filter.Offset),
+		Limit:             0, // Load all for sorting/pagination
+		Offset:            0,
 	}
 
 	message, err := incidents.CreateListIncidentsMessage(payload)
@@ -452,9 +475,73 @@ func (s *incidentsServiceServer) ListIncidents(ctx context.Context, req *inciden
 		protoIncidents = append(protoIncidents, protoIncident)
 	}
 
+	// Store total count before pagination
+	totalCount := len(protoIncidents)
+
+	// Apply sorting
+	sort.Slice(protoIncidents, func(i, j int) bool {
+		switch sortBy {
+		case "created_at":
+			if sortOrder == "ASC" {
+				return protoIncidents[i].CreatedAt.AsTime().Before(protoIncidents[j].CreatedAt.AsTime())
+			}
+			return protoIncidents[i].CreatedAt.AsTime().After(protoIncidents[j].CreatedAt.AsTime())
+		case "updated_at":
+			if sortOrder == "ASC" {
+				return protoIncidents[i].UpdatedAt.AsTime().Before(protoIncidents[j].UpdatedAt.AsTime())
+			}
+			return protoIncidents[i].UpdatedAt.AsTime().After(protoIncidents[j].UpdatedAt.AsTime())
+		case "id":
+			if sortOrder == "ASC" {
+				return protoIncidents[i].Id < protoIncidents[j].Id
+			}
+			return protoIncidents[i].Id > protoIncidents[j].Id
+		default:
+			// Default to created_at DESC
+			return protoIncidents[i].CreatedAt.AsTime().After(protoIncidents[j].CreatedAt.AsTime())
+		}
+	})
+
+	// Calculate pagination
+	totalPages := (totalCount + int(pageSize) - 1) / int(pageSize)
+	offset := (int(page) - 1) * int(pageSize)
+
+	// Apply pagination
+	var paginatedIncidents []*incidentspb.Incident
+	if offset < len(protoIncidents) {
+		end := offset + int(pageSize)
+		if end > len(protoIncidents) {
+			end = len(protoIncidents)
+		}
+		paginatedIncidents = protoIncidents[offset:end]
+	}
+
+	// Use paginated incidents for new pagination system or legacy limit for old system
+	if filter.PageSize > 0 || (filter.PageSize == 0 && filter.Limit == 0) {
+		// New pagination system (also default when no parameters specified)
+		protoIncidents = paginatedIncidents
+	} else if filter.Limit > 0 && filter.PageSize <= 0 {
+		// Legacy limit system for backward compatibility
+		if len(protoIncidents) > int(filter.Limit) {
+			protoIncidents = protoIncidents[:filter.Limit]
+			totalCount = len(protoIncidents)
+			totalPages = 1
+		}
+	}
+
+	logger.Info("Incidents listed successfully",
+		logger.Int("count", len(protoIncidents)),
+		logger.Int("total_count", totalCount),
+		logger.Int("page", int(page)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("total_pages", totalPages))
+
 	return &incidentspb.ListIncidentsResponse{
-		Incidents: protoIncidents,
-		Total:     int32(response.Data.Total),
+		Incidents:  protoIncidents,
+		Total:      int32(totalCount),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 

@@ -11,6 +11,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"atom-engine/proto/timewheel/timewheelpb"
@@ -238,9 +239,113 @@ func (s *timewheelServiceServer) GetTimeWheelStats(ctx context.Context, req *tim
 // ListTimers lists all timers
 // Возвращает список всех таймеров
 func (s *timewheelServiceServer) ListTimers(ctx context.Context, req *timewheelpb.ListTimersRequest) (*timewheelpb.ListTimersResponse, error) {
+	// Set defaults for pagination and sorting parameters
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20 // Default page size
+	}
+	page := req.Page
+	if page <= 0 {
+		page = 1 // Default page
+	}
+	sortBy := req.SortBy
+	if sortBy == "" {
+		sortBy = "created_at" // Default sort field
+	}
+	sortOrder := req.SortOrder
+	if sortOrder == "" {
+		sortOrder = "DESC" // Default sort order
+	}
+
 	logger.Info("ListTimers gRPC request",
 		logger.String("status_filter", req.StatusFilter),
-		logger.Int("limit", int(req.Limit)))
+		logger.Int("limit", int(req.Limit)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)),
+		logger.String("sort_by", sortBy),
+		logger.String("sort_order", sortOrder))
 
-	return s.core.GetTimersList(req.StatusFilter, req.Limit)
+	// Get all timers first for sorting/pagination
+	allTimersResponse, err := s.core.GetTimersList(req.StatusFilter, 0)
+	if err != nil {
+		logger.Error("Failed to get timers list", logger.String("error", err.Error()))
+		return &timewheelpb.ListTimersResponse{
+			Timers:     []*timewheelpb.TimerInfo{},
+			TotalCount: 0,
+		}, err
+	}
+
+	// Store total count before pagination
+	totalCount := len(allTimersResponse.Timers)
+
+	// Apply sorting
+	sort.Slice(allTimersResponse.Timers, func(i, j int) bool {
+		switch sortBy {
+		case "created_at":
+			if sortOrder == "ASC" {
+				return allTimersResponse.Timers[i].CreatedAt < allTimersResponse.Timers[j].CreatedAt
+			}
+			return allTimersResponse.Timers[i].CreatedAt > allTimersResponse.Timers[j].CreatedAt
+		case "scheduled_at":
+			if sortOrder == "ASC" {
+				return allTimersResponse.Timers[i].ScheduledAt < allTimersResponse.Timers[j].ScheduledAt
+			}
+			return allTimersResponse.Timers[i].ScheduledAt > allTimersResponse.Timers[j].ScheduledAt
+		case "timer_id":
+			if sortOrder == "ASC" {
+				return allTimersResponse.Timers[i].TimerId < allTimersResponse.Timers[j].TimerId
+			}
+			return allTimersResponse.Timers[i].TimerId > allTimersResponse.Timers[j].TimerId
+		default:
+			// Default to created_at DESC
+			return allTimersResponse.Timers[i].CreatedAt > allTimersResponse.Timers[j].CreatedAt
+		}
+	})
+
+	// Calculate pagination
+	totalPages := (totalCount + int(pageSize) - 1) / int(pageSize)
+	offset := (int(page) - 1) * int(pageSize)
+
+	// Apply pagination
+	var paginatedTimers []*timewheelpb.TimerInfo
+	if offset < len(allTimersResponse.Timers) {
+		end := offset + int(pageSize)
+		if end > len(allTimersResponse.Timers) {
+			end = len(allTimersResponse.Timers)
+		}
+		paginatedTimers = allTimersResponse.Timers[offset:end]
+	}
+
+	// Use paginated timers for new pagination system or legacy limit for old system
+	var finalTimers []*timewheelpb.TimerInfo
+	if req.PageSize > 0 || (req.PageSize == 0 && req.Limit == 0) {
+		// New pagination system (also default when no parameters specified)
+		finalTimers = paginatedTimers
+	} else if req.Limit > 0 && req.PageSize <= 0 {
+		// Legacy limit system for backward compatibility
+		if len(allTimersResponse.Timers) > int(req.Limit) {
+			finalTimers = allTimersResponse.Timers[:req.Limit]
+			totalCount = len(finalTimers)
+			totalPages = 1
+		} else {
+			finalTimers = allTimersResponse.Timers
+		}
+	} else {
+		finalTimers = paginatedTimers
+	}
+
+	logger.Info("Timers listed successfully",
+		logger.Int("count", len(finalTimers)),
+		logger.Int("total_count", totalCount),
+		logger.Int("page", int(page)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("total_pages", totalPages))
+
+	return &timewheelpb.ListTimersResponse{
+		Timers:     finalTimers,
+		TotalCount: int32(totalCount),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
+	}, nil
 }

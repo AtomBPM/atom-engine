@@ -75,7 +75,11 @@ message ParsedElement {
 // List BPMN processes request
 // Запрос списка BPMN процессов
 message ListBPMNProcessesRequest {
-  int32 limit = 1;
+  int32 limit = 1;               // Optional limit for number of results (deprecated, use page_size)
+  int32 page_size = 2;           // Number of items per page (default: 20)
+  int32 page = 3;                // Page number (1-based, default: 1)
+  string sort_by = 4;            // Sort field (default: "created_at")
+  string sort_order = 5;         // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 // BPMN process summary
@@ -98,6 +102,9 @@ message ListBPMNProcessesResponse {
   string message = 2;
   repeated BPMNProcessSummary processes = 3;
   int32 total_count = 4;
+  int32 page = 5;                 // Current page number
+  int32 page_size = 6;            // Number of items per page
+  int32 total_pages = 7;          // Total number of pages
 }
 
 // Get BPMN process request

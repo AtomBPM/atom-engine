@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"atom-engine/proto/parser/parserpb"
@@ -99,13 +98,36 @@ func (d *DaemonCommand) BPMNParse() error {
 func (d *DaemonCommand) BPMNList() error {
 	logger.Debug("Listing BPMN processes")
 
-	// Parse limit from arguments
-	var limit int32 = 0
-	if len(os.Args) > 3 {
-		if l, err := strconv.Atoi(os.Args[3]); err == nil {
-			limit = int32(l)
+	// Parse arguments for pagination
+	var pageSize, page int32 = 20, 1 // Default values
+
+	args := os.Args[3:] // Skip "atomd bpmn list"
+
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
 		}
+		// Note: No positional arguments for BPMN list currently
 	}
+
+	logger.Debug("BPMN list request",
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -120,7 +142,11 @@ func (d *DaemonCommand) BPMNList() error {
 	defer cancel()
 
 	resp, err := client.ListBPMNProcesses(ctx, &parserpb.ListBPMNProcessesRequest{
-		Limit: limit,
+		Limit:     0, // Use pagination instead
+		PageSize:  pageSize,
+		Page:      page,
+		SortBy:    "created_at",
+		SortOrder: "DESC",
 	})
 	if err != nil {
 		logger.Error("Failed to list BPMN processes", logger.String("error", err.Error()))
@@ -131,7 +157,33 @@ func (d *DaemonCommand) BPMNList() error {
 
 	fmt.Printf("BPMN Process List\n")
 	fmt.Printf("================\n")
+
+	// Print pagination info if multiple pages exist
+	if resp.TotalPages > 1 {
+		fmt.Printf("Page %d of %d (Total: %d processes, Showing: %d)\n\n",
+			resp.Page, resp.TotalPages, resp.TotalCount, len(resp.Processes))
+	} else {
+		fmt.Printf("Found %d process(es):\n\n", resp.TotalCount)
+	}
+
 	printBPMNProcessesTable(resp.Processes, resp.TotalCount)
+
+	// Show navigation hints for pagination
+	if resp.TotalPages > 1 {
+		fmt.Printf("\nNavigation:\n")
+
+		// Previous page
+		if resp.Page > 1 {
+			prevPageCmd := fmt.Sprintf("atomd bpmn list --page %d --page-size %d", resp.Page-1, resp.PageSize)
+			fmt.Printf("Previous page: %s\n", prevPageCmd)
+		}
+
+		// Next page
+		if resp.Page < resp.TotalPages {
+			nextPageCmd := fmt.Sprintf("atomd bpmn list --page %d --page-size %d", resp.Page+1, resp.PageSize)
+			fmt.Printf("Next page: %s\n", nextPageCmd)
+		}
+	}
 
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"atom-engine/proto/jobs/jobspb"
 	"atom-engine/src/core/logger"
@@ -340,7 +341,7 @@ func (s *jobsServiceServer) ThrowError(ctx context.Context, req *jobspb.ThrowErr
 		}, nil
 	}
 
-	logger.Info("Job error thrown successfully", 
+	logger.Info("Job error thrown successfully",
 		logger.String("job_key", req.JobKey),
 		logger.String("error_code", req.ErrorCode))
 
@@ -403,10 +404,32 @@ func (s *jobsServiceServer) GetJobStats(ctx context.Context, req *jobspb.GetJobS
 
 // ListJobs lists jobs
 func (s *jobsServiceServer) ListJobs(ctx context.Context, req *jobspb.ListJobsRequest) (*jobspb.ListJobsResponse, error) {
+	// Set defaults for pagination and sorting parameters
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20 // Default page size
+	}
+	page := req.Page
+	if page <= 0 {
+		page = 1 // Default page
+	}
+	sortBy := req.SortBy
+	if sortBy == "" {
+		sortBy = "created_at" // Default sort field
+	}
+	sortOrder := req.SortOrder
+	if sortOrder == "" {
+		sortOrder = "DESC" // Default sort order
+	}
+
 	logger.Info("ListJobs gRPC request",
 		logger.String("type", req.Type),
 		logger.String("worker", req.Worker),
-		logger.Int("limit", int(req.Limit)))
+		logger.Int("limit", int(req.Limit)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)),
+		logger.String("sort_by", sortBy),
+		logger.String("sort_order", sortOrder))
 
 	// Get jobs component from core
 	component, err := getJobsComponent(s.core)
@@ -417,20 +440,68 @@ func (s *jobsServiceServer) ListJobs(ctx context.Context, req *jobspb.ListJobsRe
 		}, nil
 	}
 
-	// Set default limit if not provided
-	limit := int(req.Limit)
-	if limit <= 0 {
-		limit = 50
-	}
-
-	// List jobs through component
-	jobInfos, total, err := component.ListJobs(req.Type, req.Worker, req.ProcessInstanceId, req.State, limit, int(req.Offset))
+	// List all jobs for sorting/pagination
+	jobInfos, total, err := component.ListJobs(req.Type, req.Worker, req.ProcessInstanceId, req.State, 0, 0)
 	if err != nil {
 		logger.Error("Failed to list jobs", logger.String("error", err.Error()))
 		return &jobspb.ListJobsResponse{
 			Jobs:       []*jobspb.JobInfo{},
 			TotalCount: 0,
 		}, nil
+	}
+
+	// Store total count before pagination
+	totalCount := total
+
+	// Apply sorting
+	sort.Slice(jobInfos, func(i, j int) bool {
+		switch sortBy {
+		case "created_at":
+			if sortOrder == "ASC" {
+				return jobInfos[i].CreatedAt < jobInfos[j].CreatedAt
+			}
+			return jobInfos[i].CreatedAt > jobInfos[j].CreatedAt
+		case "key":
+			if sortOrder == "ASC" {
+				return jobInfos[i].Key < jobInfos[j].Key
+			}
+			return jobInfos[i].Key > jobInfos[j].Key
+		case "type":
+			if sortOrder == "ASC" {
+				return jobInfos[i].Type < jobInfos[j].Type
+			}
+			return jobInfos[i].Type > jobInfos[j].Type
+		default:
+			// Default to created_at DESC
+			return jobInfos[i].CreatedAt > jobInfos[j].CreatedAt
+		}
+	})
+
+	// Calculate pagination
+	totalPages := (totalCount + int(pageSize) - 1) / int(pageSize)
+	offset := (int(page) - 1) * int(pageSize)
+
+	// Apply pagination
+	var paginatedJobs []jobs.JobInfo
+	if offset < len(jobInfos) {
+		end := offset + int(pageSize)
+		if end > len(jobInfos) {
+			end = len(jobInfos)
+		}
+		paginatedJobs = jobInfos[offset:end]
+	}
+
+	// Use paginated jobs for new pagination system or legacy limit for old system
+	if req.PageSize > 0 || (req.PageSize == 0 && req.Limit == 0) {
+		// New pagination system (also default when no parameters specified)
+		jobInfos = paginatedJobs
+	} else if req.Limit > 0 && req.PageSize <= 0 {
+		// Legacy limit system for backward compatibility
+		if len(jobInfos) > int(req.Limit) {
+			jobInfos = jobInfos[:req.Limit]
+			totalCount = len(jobInfos)
+			totalPages = 1
+		}
 	}
 
 	// Convert to protobuf format
@@ -459,11 +530,19 @@ func (s *jobsServiceServer) ListJobs(ctx context.Context, req *jobspb.ListJobsRe
 		}
 	}
 
-	logger.Info("Jobs listed successfully", logger.Int("count", len(protoJobs)), logger.Int("total", total))
+	logger.Info("Jobs listed successfully",
+		logger.Int("count", len(protoJobs)),
+		logger.Int("total_count", totalCount),
+		logger.Int("page", int(page)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("total_pages", totalPages))
 
 	return &jobspb.ListJobsResponse{
 		Jobs:       protoJobs,
-		TotalCount: int32(total),
+		TotalCount: int32(totalCount),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 

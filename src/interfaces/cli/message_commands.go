@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"atom-engine/proto/messages/messagespb"
@@ -109,12 +110,42 @@ func (d *DaemonCommand) MessagePublish() error {
 func (d *DaemonCommand) MessageList() error {
 	logger.Debug("Listing messages")
 
-	// Parse arguments
+	// Parse arguments for filtering and pagination
 	var tenantID string
-	var limit int32 = 50
-	if len(os.Args) > 3 {
-		tenantID = os.Args[3]
+	var pageSize, page int32 = 20, 1 // Default values
+
+	args := os.Args[3:] // Skip "atomd message list"
+
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Positional arguments
+			if tenantID == "" {
+				tenantID = arg
+			}
+		}
 	}
+
+	logger.Debug("Message list request",
+		logger.String("tenant_id", tenantID),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -129,8 +160,12 @@ func (d *DaemonCommand) MessageList() error {
 	defer cancel()
 
 	resp, err := client.ListBufferedMessages(ctx, &messagespb.ListBufferedMessagesRequest{
-		TenantId: tenantID,
-		Limit:    limit,
+		TenantId:  tenantID,
+		Limit:     0, // Use pagination instead
+		PageSize:  pageSize,
+		Page:      page,
+		SortBy:    "published_at",
+		SortOrder: "DESC",
 	})
 	if err != nil {
 		logger.Error("Failed to list buffered messages", logger.String("error", err.Error()))
@@ -141,7 +176,41 @@ func (d *DaemonCommand) MessageList() error {
 
 	fmt.Printf("Buffered Message List\n")
 	fmt.Printf("====================\n")
+
+	// Print pagination info if multiple pages exist
+	if resp.TotalPages > 1 {
+		fmt.Printf("Page %d of %d (Total: %d messages, Showing: %d)\n\n",
+			resp.Page, resp.TotalPages, resp.TotalCount, len(resp.Messages))
+	} else {
+		fmt.Printf("Found %d message(s):\n\n", resp.TotalCount)
+	}
+
 	printMessagesTable(resp.Messages, resp.TotalCount)
+
+	// Show navigation hints for pagination
+	if resp.TotalPages > 1 {
+		fmt.Printf("\nNavigation:\n")
+
+		// Previous page
+		if resp.Page > 1 {
+			prevPageCmd := fmt.Sprintf("atomd message list")
+			if tenantID != "" {
+				prevPageCmd += fmt.Sprintf(" %s", tenantID)
+			}
+			prevPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page-1, resp.PageSize)
+			fmt.Printf("Previous page: %s\n", prevPageCmd)
+		}
+
+		// Next page
+		if resp.Page < resp.TotalPages {
+			nextPageCmd := fmt.Sprintf("atomd message list")
+			if tenantID != "" {
+				nextPageCmd += fmt.Sprintf(" %s", tenantID)
+			}
+			nextPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page+1, resp.PageSize)
+			fmt.Printf("Next page: %s\n", nextPageCmd)
+		}
+	}
 
 	return nil
 }
@@ -151,12 +220,42 @@ func (d *DaemonCommand) MessageList() error {
 func (d *DaemonCommand) MessageSubscriptions() error {
 	logger.Debug("Listing message subscriptions")
 
-	// Parse arguments
+	// Parse arguments for filtering and pagination
 	var tenantID string
-	var limit int32 = 50
-	if len(os.Args) > 3 {
-		tenantID = os.Args[3]
+	var pageSize, page int32 = 20, 1 // Default values
+
+	args := os.Args[3:] // Skip "atomd message subscriptions"
+
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Positional arguments
+			if tenantID == "" {
+				tenantID = arg
+			}
+		}
 	}
+
+	logger.Debug("Message subscriptions request",
+		logger.String("tenant_id", tenantID),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -171,8 +270,12 @@ func (d *DaemonCommand) MessageSubscriptions() error {
 	defer cancel()
 
 	resp, err := client.ListMessageSubscriptions(ctx, &messagespb.ListMessageSubscriptionsRequest{
-		TenantId: tenantID,
-		Limit:    limit,
+		TenantId:  tenantID,
+		Limit:     0, // Use pagination instead
+		PageSize:  pageSize,
+		Page:      page,
+		SortBy:    "created_at",
+		SortOrder: "DESC",
 	})
 	if err != nil {
 		logger.Error("Failed to list message subscriptions", logger.String("error", err.Error()))
@@ -183,7 +286,41 @@ func (d *DaemonCommand) MessageSubscriptions() error {
 
 	fmt.Printf("Message Subscriptions\n")
 	fmt.Printf("====================\n")
+
+	// Print pagination info if multiple pages exist
+	if resp.TotalPages > 1 {
+		fmt.Printf("Page %d of %d (Total: %d subscriptions, Showing: %d)\n\n",
+			resp.Page, resp.TotalPages, resp.TotalCount, len(resp.Subscriptions))
+	} else {
+		fmt.Printf("Found %d subscription(s):\n\n", resp.TotalCount)
+	}
+
 	printMessageSubscriptionsTable(resp.Subscriptions, resp.TotalCount)
+
+	// Show navigation hints for pagination
+	if resp.TotalPages > 1 {
+		fmt.Printf("\nNavigation:\n")
+
+		// Previous page
+		if resp.Page > 1 {
+			prevPageCmd := fmt.Sprintf("atomd message subscriptions")
+			if tenantID != "" {
+				prevPageCmd += fmt.Sprintf(" %s", tenantID)
+			}
+			prevPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page-1, resp.PageSize)
+			fmt.Printf("Previous page: %s\n", prevPageCmd)
+		}
+
+		// Next page
+		if resp.Page < resp.TotalPages {
+			nextPageCmd := fmt.Sprintf("atomd message subscriptions")
+			if tenantID != "" {
+				nextPageCmd += fmt.Sprintf(" %s", tenantID)
+			}
+			nextPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page+1, resp.PageSize)
+			fmt.Printf("Next page: %s\n", nextPageCmd)
+		}
+	}
 
 	return nil
 }

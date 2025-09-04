@@ -87,8 +87,12 @@ message IncidentFilter {
   string worker_id = 7;
   google.protobuf.Timestamp created_after = 8;
   google.protobuf.Timestamp created_before = 9;
-  int32 limit = 10;
-  int32 offset = 11;
+  int32 limit = 10;               // Optional limit for number of results (deprecated, use page_size)
+  int32 offset = 11;              // Optional offset for pagination (deprecated, use page)
+  int32 page_size = 12;           // Number of items per page (default: 20)
+  int32 page = 13;                // Page number (1-based, default: 1)
+  string sort_by = 14;            // Sort field (default: "created_at")
+  string sort_order = 15;         // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 // IncidentStats message for incident statistics
@@ -159,6 +163,9 @@ message GetIncidentResponse {
 message ListIncidentsResponse {
   repeated Incident incidents = 1;
   int32 total = 2;
+  int32 page = 3;                 // Current page number
+  int32 page_size = 4;            // Number of items per page
+  int32 total_pages = 5;          // Total number of pages
 }
 
 message GetIncidentStatsResponse {

@@ -251,28 +251,42 @@ func (d *DaemonCommand) TimerStats() error {
 func (d *DaemonCommand) TimerList() error {
 	logger.Debug("Listing timers")
 
-	// Parse optional parameters
-	statusFilter := ""
-	var limit int32 = 0
+	// Parse arguments for filtering and pagination
+	var statusFilter string
+	var pageSize, page int32 = 20, 1 // Default values
 
-	if len(os.Args) > 3 {
-		statusFilter = os.Args[3]
-	}
-	if len(os.Args) > 4 {
-		var parsedLimit int64
-		_, err := fmt.Sscanf(os.Args[4], "%d", &parsedLimit)
-		if err != nil {
-			logger.Error("Invalid limit parameter",
-				logger.String("limit", os.Args[4]),
-				logger.String("error", err.Error()))
-			return fmt.Errorf("invalid limit: %s", os.Args[4])
+	args := os.Args[3:] // Skip "atomd timer list"
+
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Positional arguments
+			if statusFilter == "" {
+				statusFilter = arg
+			}
 		}
-		limit = int32(parsedLimit)
 	}
 
 	logger.Debug("Timer list request",
 		logger.String("status_filter", statusFilter),
-		logger.Int("limit", int(limit)))
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -285,7 +299,11 @@ func (d *DaemonCommand) TimerList() error {
 
 	req := &timewheelpb.ListTimersRequest{
 		StatusFilter: statusFilter,
-		Limit:        limit,
+		Limit:        0, // Use pagination instead
+		PageSize:     pageSize,
+		Page:         page,
+		SortBy:       "created_at",
+		SortOrder:    "DESC",
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -301,6 +319,40 @@ func (d *DaemonCommand) TimerList() error {
 		logger.Int("timers_count", len(resp.Timers)),
 		logger.Int("total_count", int(resp.TotalCount)))
 
+	// Print pagination info if multiple pages exist
+	if resp.TotalPages > 1 {
+		fmt.Printf("Timer List - Page %d of %d (Total: %d timers, Showing: %d)\n\n",
+			resp.Page, resp.TotalPages, resp.TotalCount, len(resp.Timers))
+	} else {
+		fmt.Printf("Timer List - Found %d timer(s):\n\n", resp.TotalCount)
+	}
+
 	printTimersTable(resp.Timers, resp.TotalCount)
+
+	// Show navigation hints for pagination
+	if resp.TotalPages > 1 {
+		fmt.Printf("\nNavigation:\n")
+
+		// Previous page
+		if resp.Page > 1 {
+			prevPageCmd := fmt.Sprintf("atomd timer list")
+			if statusFilter != "" {
+				prevPageCmd += fmt.Sprintf(" %s", statusFilter)
+			}
+			prevPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page-1, resp.PageSize)
+			fmt.Printf("Previous page: %s\n", prevPageCmd)
+		}
+
+		// Next page
+		if resp.Page < resp.TotalPages {
+			nextPageCmd := fmt.Sprintf("atomd timer list")
+			if statusFilter != "" {
+				nextPageCmd += fmt.Sprintf(" %s", statusFilter)
+			}
+			nextPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page+1, resp.PageSize)
+			fmt.Printf("Next page: %s\n", nextPageCmd)
+		}
+	}
+
 	return nil
 }

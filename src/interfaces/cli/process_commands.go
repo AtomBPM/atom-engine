@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -253,32 +252,46 @@ func (d *DaemonCommand) ProcessCancel() error {
 func (d *DaemonCommand) ProcessList() error {
 	logger.Debug("Listing process instances")
 
-	// Parse arguments for optional filters
+	// Parse arguments for filtering and pagination
 	var statusFilter string
 	var processKeyFilter string
-	var limit int32
+	var pageSize, page int32 = 20, 1 // Default values
 
 	args := os.Args[3:] // Skip "atomd process list"
-	for i, arg := range args {
-		switch {
-		case i == 0 && !strings.HasPrefix(arg, "-"):
-			// First positional argument is status filter
-			statusFilter = arg
-		case i == 1 && !strings.HasPrefix(arg, "-"):
-			// Second positional argument is limit
-			if l, err := strconv.Atoi(arg); err == nil {
-				limit = int32(l)
+
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
 			}
-		case i == 0 && arg != "":
-			// If first arg is empty string, it's still valid
-			statusFilter = arg
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Positional arguments
+			if statusFilter == "" {
+				statusFilter = arg
+			} else if processKeyFilter == "" {
+				processKeyFilter = arg
+			}
 		}
 	}
 
 	logger.Debug("Process list request",
 		logger.String("status_filter", statusFilter),
 		logger.String("process_key_filter", processKeyFilter),
-		logger.Int("limit", int(limit)))
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -295,8 +308,12 @@ func (d *DaemonCommand) ProcessList() error {
 
 	response, err := client.ListProcessInstances(ctx, &processpb.ListProcessInstancesRequest{
 		StatusFilter:     statusFilter,
-		Limit:            limit,
 		ProcessKeyFilter: processKeyFilter,
+		Limit:            0, // Use pagination instead
+		PageSize:         pageSize,
+		Page:             page,
+		SortBy:           "started_at",
+		SortOrder:        "DESC",
 	})
 	if err != nil {
 		logger.Error("Failed to list process instances via gRPC", logger.String("error", err.Error()))
@@ -313,7 +330,47 @@ func (d *DaemonCommand) ProcessList() error {
 
 	fmt.Printf("Process Instance List\n")
 	fmt.Printf("====================\n")
-	printProcessInstancesTable(response.Instances, int32(len(response.Instances)))
+
+	// Print pagination info if multiple pages exist
+	if response.TotalPages > 1 {
+		fmt.Printf("Page %d of %d (Total: %d instances, Showing: %d)\n\n",
+			response.Page, response.TotalPages, response.TotalCount, len(response.Instances))
+	} else {
+		fmt.Printf("Found %d instance(s):\n\n", response.TotalCount)
+	}
+
+	printProcessInstancesTable(response.Instances, response.TotalCount)
+
+	// Show navigation hints for pagination
+	if response.TotalPages > 1 {
+		fmt.Printf("\nNavigation:\n")
+
+		// Previous page
+		if response.Page > 1 {
+			prevPageCmd := fmt.Sprintf("atomd process list")
+			if statusFilter != "" {
+				prevPageCmd += fmt.Sprintf(" %s", statusFilter)
+			}
+			if processKeyFilter != "" {
+				prevPageCmd += fmt.Sprintf(" %s", processKeyFilter)
+			}
+			prevPageCmd += fmt.Sprintf(" --page %d --page-size %d", response.Page-1, response.PageSize)
+			fmt.Printf("Previous page: %s\n", prevPageCmd)
+		}
+
+		// Next page
+		if response.Page < response.TotalPages {
+			nextPageCmd := fmt.Sprintf("atomd process list")
+			if statusFilter != "" {
+				nextPageCmd += fmt.Sprintf(" %s", statusFilter)
+			}
+			if processKeyFilter != "" {
+				nextPageCmd += fmt.Sprintf(" %s", processKeyFilter)
+			}
+			nextPageCmd += fmt.Sprintf(" --page %d --page-size %d", response.Page+1, response.PageSize)
+			fmt.Printf("Next page: %s\n", nextPageCmd)
+		}
+	}
 
 	return nil
 }

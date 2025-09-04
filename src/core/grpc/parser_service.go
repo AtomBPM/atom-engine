@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -130,8 +131,30 @@ func (s *ParserService) ParseBPMNFile(ctx context.Context, req *parserpb.ParseBP
 // ListBPMNProcesses lists all BPMN processes
 // Выводит список всех BPMN процессов
 func (s *ParserService) ListBPMNProcesses(ctx context.Context, req *parserpb.ListBPMNProcessesRequest) (*parserpb.ListBPMNProcessesResponse, error) {
+	// Set defaults for pagination and sorting parameters
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20 // Default page size
+	}
+	page := req.Page
+	if page <= 0 {
+		page = 1 // Default page
+	}
+	sortBy := req.SortBy
+	if sortBy == "" {
+		sortBy = "created_at" // Default sort field
+	}
+	sortOrder := req.SortOrder
+	if sortOrder == "" {
+		sortOrder = "DESC" // Default sort order
+	}
+
 	logger.Info("Received ListBPMNProcesses request",
-		logger.Int("limit", int(req.Limit)))
+		logger.Int("limit", int(req.Limit)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)),
+		logger.String("sort_by", sortBy),
+		logger.String("sort_order", sortOrder))
 
 	parserCompInterface := s.core.GetParserComponent()
 	if parserCompInterface == nil {
@@ -149,7 +172,8 @@ func (s *ParserService) ListBPMNProcesses(ctx context.Context, req *parserpb.Lis
 		}, status.Error(codes.Internal, "Invalid parser component type")
 	}
 
-	processList, err := parserComp.ListBPMNProcesses(int(req.Limit))
+	// Get all processes for sorting/pagination
+	processList, err := parserComp.ListBPMNProcesses(0)
 	if err != nil {
 		logger.Error("Failed to list BPMN processes", logger.String("error", err.Error()))
 		return &parserpb.ListBPMNProcessesResponse{
@@ -158,15 +182,10 @@ func (s *ParserService) ListBPMNProcesses(ctx context.Context, req *parserpb.Lis
 		}, status.Error(codes.Internal, err.Error())
 	}
 
-	response := &parserpb.ListBPMNProcessesResponse{
-		Success:    true,
-		Message:    "Successfully retrieved BPMN processes",
-		Processes:  []*parserpb.BPMNProcessSummary{},
-		TotalCount: int32(len(processList)),
-	}
-
-	for _, process := range processList {
-		summary := &parserpb.BPMNProcessSummary{
+	// Convert to protobuf format
+	processes := make([]*parserpb.BPMNProcessSummary, len(processList))
+	for i, process := range processList {
+		processes[i] = &parserpb.BPMNProcessSummary{
 			ProcessKey:    process.BPMNID,
 			ProcessId:     process.ProcessID,
 			ProcessName:   process.ProcessName,
@@ -176,7 +195,87 @@ func (s *ParserService) ListBPMNProcesses(ctx context.Context, req *parserpb.Lis
 			CreatedAt:     process.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:     process.CreatedAt.Format(time.RFC3339),
 		}
-		response.Processes = append(response.Processes, summary)
+	}
+
+	// Store total count before pagination
+	totalCount := len(processes)
+
+	// Apply sorting
+	sort.Slice(processes, func(i, j int) bool {
+		switch sortBy {
+		case "created_at":
+			if sortOrder == "ASC" {
+				return processes[i].CreatedAt < processes[j].CreatedAt
+			}
+			return processes[i].CreatedAt > processes[j].CreatedAt
+		case "updated_at":
+			if sortOrder == "ASC" {
+				return processes[i].UpdatedAt < processes[j].UpdatedAt
+			}
+			return processes[i].UpdatedAt > processes[j].UpdatedAt
+		case "process_key":
+			if sortOrder == "ASC" {
+				return processes[i].ProcessKey < processes[j].ProcessKey
+			}
+			return processes[i].ProcessKey > processes[j].ProcessKey
+		case "process_name":
+			if sortOrder == "ASC" {
+				return processes[i].ProcessName < processes[j].ProcessName
+			}
+			return processes[i].ProcessName > processes[j].ProcessName
+		default:
+			// Default to created_at DESC
+			return processes[i].CreatedAt > processes[j].CreatedAt
+		}
+	})
+
+	// Calculate pagination
+	totalPages := (totalCount + int(pageSize) - 1) / int(pageSize)
+	offset := (int(page) - 1) * int(pageSize)
+
+	// Apply pagination
+	var paginatedProcesses []*parserpb.BPMNProcessSummary
+	if offset < len(processes) {
+		end := offset + int(pageSize)
+		if end > len(processes) {
+			end = len(processes)
+		}
+		paginatedProcesses = processes[offset:end]
+	}
+
+	// Use paginated processes for new pagination system or legacy limit for old system
+	var finalProcesses []*parserpb.BPMNProcessSummary
+	if req.PageSize > 0 || (req.PageSize == 0 && req.Limit == 0) {
+		// New pagination system (also default when no parameters specified)
+		finalProcesses = paginatedProcesses
+	} else if req.Limit > 0 && req.PageSize <= 0 {
+		// Legacy limit system for backward compatibility
+		if len(processes) > int(req.Limit) {
+			finalProcesses = processes[:req.Limit]
+			totalCount = len(finalProcesses)
+			totalPages = 1
+		} else {
+			finalProcesses = processes
+		}
+	} else {
+		finalProcesses = paginatedProcesses
+	}
+
+	logger.Info("BPMN processes listed successfully",
+		logger.Int("count", len(finalProcesses)),
+		logger.Int("total_count", totalCount),
+		logger.Int("page", int(page)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("total_pages", totalPages))
+
+	response := &parserpb.ListBPMNProcessesResponse{
+		Success:    true,
+		Message:    "Successfully retrieved BPMN processes",
+		Processes:  finalProcesses,
+		TotalCount: int32(totalCount),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}
 
 	return response, nil

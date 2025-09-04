@@ -92,13 +92,20 @@ message GetTimeWheelStatsResponse {
 // Request for listing timers
 message ListTimersRequest {
   string status_filter = 1; // Optional: filter by status (SCHEDULED, FIRED, CANCELLED)
-  int32 limit = 2;          // Optional: limit number of results
+  int32 limit = 2;          // Optional: limit number of results (deprecated, use page_size)
+  int32 page_size = 3;      // Number of items per page (default: 20)
+  int32 page = 4;           // Page number (1-based, default: 1)
+  string sort_by = 5;       // Sort field (default: "created_at")
+  string sort_order = 6;    // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 // Response for listing timers
 message ListTimersResponse {
   repeated TimerInfo timers = 1;
   int32 total_count = 2;
+  int32 page = 3;                 // Current page number
+  int32 page_size = 4;            // Number of items per page
+  int32 total_pages = 5;          // Total number of pages
 }
 
 // Timer information for listing

@@ -25,34 +25,44 @@ import (
 func (d *DaemonCommand) IncidentList() error {
 	logger.Debug("Listing incidents")
 
-	// Parse arguments: atomd incident list [status] [type] [limit]
+	// Parse arguments for filtering and pagination
 	args := os.Args[3:] // Skip "atomd incident list"
 
-	// Default filter values
+	// Default filter values and pagination
 	var statusFilter []incidentspb.IncidentStatus
 	var typeFilter []incidentspb.IncidentType
-	var limit int32 = 10
+	var pageSize, page int32 = 20, 1 // Default values
 
-	// Parse arguments
-	for i, arg := range args {
-		switch i {
-		case 0: // status filter
-			if arg != "" && arg != "all" {
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Handle positional arguments for status and type filters
+			if len(statusFilter) == 0 && arg != "" && arg != "all" {
 				status := parseIncidentStatus(arg)
 				if status != incidentspb.IncidentStatus_INCIDENT_STATUS_UNSPECIFIED {
 					statusFilter = append(statusFilter, status)
 				}
-			}
-		case 1: // type filter
-			if arg != "" && arg != "all" {
+			} else if len(typeFilter) == 0 && arg != "" && arg != "all" {
 				incidentType := parseIncidentType(arg)
 				if incidentType != incidentspb.IncidentType_INCIDENT_TYPE_UNSPECIFIED {
 					typeFilter = append(typeFilter, incidentType)
 				}
-			}
-		case 2: // limit
-			if limitVal, err := strconv.Atoi(arg); err == nil && limitVal > 0 {
-				limit = int32(limitVal)
 			}
 		}
 	}
@@ -60,7 +70,8 @@ func (d *DaemonCommand) IncidentList() error {
 	logger.Debug("Incident list request",
 		logger.Int("status_filters", len(statusFilter)),
 		logger.Int("type_filters", len(typeFilter)),
-		logger.Int("limit", int(limit)))
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	// Connect to gRPC server
 	conn, err := d.grpcClient.Connect()
@@ -75,9 +86,13 @@ func (d *DaemonCommand) IncidentList() error {
 	// Create request
 	req := &incidentspb.ListIncidentsRequest{
 		Filter: &incidentspb.IncidentFilter{
-			Status: statusFilter,
-			Type:   typeFilter,
-			Limit:  limit,
+			Status:    statusFilter,
+			Type:      typeFilter,
+			Limit:     0, // Use pagination instead
+			PageSize:  pageSize,
+			Page:      page,
+			SortBy:    "created_at",
+			SortOrder: "DESC",
 		},
 	}
 
@@ -97,7 +112,13 @@ func (d *DaemonCommand) IncidentList() error {
 		return nil
 	}
 
-	fmt.Printf("Found %d incidents (total: %d)\n\n", len(resp.Incidents), resp.Total)
+	// Print pagination info if multiple pages exist
+	if resp.TotalPages > 1 {
+		fmt.Printf("Page %d of %d (Total: %d incidents, Showing: %d)\n\n",
+			resp.Page, resp.TotalPages, resp.Total, len(resp.Incidents))
+	} else {
+		fmt.Printf("Found %d incident(s):\n\n", resp.Total)
+	}
 
 	// Display table header
 	fmt.Printf("%-25s %-15s %-15s %-40s %-25s\n", "ID", "TYPE", "STATUS", "MESSAGE", "CREATED")
@@ -123,7 +144,37 @@ func (d *DaemonCommand) IncidentList() error {
 			createdAt)
 	}
 
-	fmt.Printf("\nShowing %d of %d incidents\n", len(resp.Incidents), resp.Total)
+	// Show navigation hints for pagination
+	if resp.TotalPages > 1 {
+		fmt.Printf("\nNavigation:\n")
+
+		// Previous page
+		if resp.Page > 1 {
+			prevPageCmd := fmt.Sprintf("atomd incident list")
+			if len(statusFilter) > 0 {
+				prevPageCmd += fmt.Sprintf(" %s", formatIncidentStatus(statusFilter[0]))
+			}
+			if len(typeFilter) > 0 {
+				prevPageCmd += fmt.Sprintf(" %s", formatIncidentType(typeFilter[0]))
+			}
+			prevPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page-1, resp.PageSize)
+			fmt.Printf("Previous page: %s\n", prevPageCmd)
+		}
+
+		// Next page
+		if resp.Page < resp.TotalPages {
+			nextPageCmd := fmt.Sprintf("atomd incident list")
+			if len(statusFilter) > 0 {
+				nextPageCmd += fmt.Sprintf(" %s", formatIncidentStatus(statusFilter[0]))
+			}
+			if len(typeFilter) > 0 {
+				nextPageCmd += fmt.Sprintf(" %s", formatIncidentType(typeFilter[0]))
+			}
+			nextPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page+1, resp.PageSize)
+			fmt.Printf("Next page: %s\n", nextPageCmd)
+		}
+	}
+
 	return nil
 }
 

@@ -48,8 +48,12 @@ message PublishMessageResponse {
 // ListBufferedMessages
 message ListBufferedMessagesRequest {
   string tenant_id = 1;
-  int32 limit = 2;
-  int32 offset = 3;
+  int32 limit = 2;               // Optional limit for number of results (deprecated, use page_size)
+  int32 offset = 3;              // Optional offset for pagination (deprecated, use page)
+  int32 page_size = 4;           // Number of items per page (default: 20)
+  int32 page = 5;                // Page number (1-based, default: 1)
+  string sort_by = 6;            // Sort field (default: "published_at")
+  string sort_order = 7;         // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 message BufferedMessage {
@@ -69,13 +73,20 @@ message ListBufferedMessagesResponse {
   int32 total_count = 2;
   bool success = 3;
   string message = 4;
+  int32 page = 5;                 // Current page number
+  int32 page_size = 6;            // Number of items per page
+  int32 total_pages = 7;          // Total number of pages
 }
 
 // ListMessageSubscriptions
 message ListMessageSubscriptionsRequest {
   string tenant_id = 1;
-  int32 limit = 2;
-  int32 offset = 3;
+  int32 limit = 2;               // Optional limit for number of results (deprecated, use page_size)
+  int32 offset = 3;              // Optional offset for pagination (deprecated, use page)
+  int32 page_size = 4;           // Number of items per page (default: 20)
+  int32 page = 5;                // Page number (1-based, default: 1)
+  string sort_by = 6;            // Sort field (default: "created_at")
+  string sort_order = 7;         // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 message MessageSubscription {
@@ -97,6 +108,9 @@ message ListMessageSubscriptionsResponse {
   int32 total_count = 2;
   bool success = 3;
   string message = 4;
+  int32 page = 5;                 // Current page number
+  int32 page_size = 6;            // Number of items per page
+  int32 total_pages = 7;          // Total number of pages
 }
 
 // GetMessageStats

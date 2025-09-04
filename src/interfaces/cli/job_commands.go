@@ -12,7 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 
 	"atom-engine/proto/jobs/jobspb"
@@ -24,20 +24,54 @@ import (
 func (d *DaemonCommand) JobList() error {
 	logger.Debug("Listing jobs")
 
-	// Parse arguments
+	// Parse arguments for filtering and pagination
 	var jobType, worker, processInstanceID, processKey, state string
-	var limit int32 = 50
-	if len(os.Args) > 3 {
-		jobType = os.Args[3]
-	}
-	if len(os.Args) > 4 {
-		worker = os.Args[4]
-	}
-	if len(os.Args) > 5 {
-		if l, err := strconv.Atoi(os.Args[5]); err == nil {
-			limit = int32(l)
+	var pageSize, page int32 = 20, 1 // Default values
+
+	args := os.Args[3:] // Skip "atomd job list"
+
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Positional arguments
+			if jobType == "" {
+				jobType = arg
+			} else if worker == "" {
+				worker = arg
+			} else if processInstanceID == "" {
+				processInstanceID = arg
+			} else if processKey == "" {
+				processKey = arg
+			} else if state == "" {
+				state = arg
+			}
 		}
 	}
+
+	logger.Debug("Job list request",
+		logger.String("job_type", jobType),
+		logger.String("worker", worker),
+		logger.String("process_instance_id", processInstanceID),
+		logger.String("process_key", processKey),
+		logger.String("state", state),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -57,7 +91,11 @@ func (d *DaemonCommand) JobList() error {
 		ProcessInstanceId: processInstanceID,
 		ProcessKey:        processKey,
 		State:             state,
-		Limit:             limit,
+		Limit:             0, // Use pagination instead
+		PageSize:          pageSize,
+		Page:              page,
+		SortBy:            "created_at",
+		SortOrder:         "DESC",
 		IncludeVariables:  false,
 	})
 	if err != nil {
@@ -69,7 +107,47 @@ func (d *DaemonCommand) JobList() error {
 
 	fmt.Printf("Job List\n")
 	fmt.Printf("========\n")
+
+	// Print pagination info if multiple pages exist
+	if resp.TotalPages > 1 {
+		fmt.Printf("Page %d of %d (Total: %d jobs, Showing: %d)\n\n",
+			resp.Page, resp.TotalPages, resp.TotalCount, len(resp.Jobs))
+	} else {
+		fmt.Printf("Found %d job(s):\n\n", resp.TotalCount)
+	}
+
 	printJobsTable(resp.Jobs, resp.TotalCount)
+
+	// Show navigation hints for pagination
+	if resp.TotalPages > 1 {
+		fmt.Printf("\nNavigation:\n")
+
+		// Previous page
+		if resp.Page > 1 {
+			prevPageCmd := fmt.Sprintf("atomd job list")
+			if jobType != "" {
+				prevPageCmd += fmt.Sprintf(" %s", jobType)
+			}
+			if worker != "" {
+				prevPageCmd += fmt.Sprintf(" %s", worker)
+			}
+			prevPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page-1, resp.PageSize)
+			fmt.Printf("Previous page: %s\n", prevPageCmd)
+		}
+
+		// Next page
+		if resp.Page < resp.TotalPages {
+			nextPageCmd := fmt.Sprintf("atomd job list")
+			if jobType != "" {
+				nextPageCmd += fmt.Sprintf(" %s", jobType)
+			}
+			if worker != "" {
+				nextPageCmd += fmt.Sprintf(" %s", worker)
+			}
+			nextPageCmd += fmt.Sprintf(" --page %d --page-size %d", resp.Page+1, resp.PageSize)
+			fmt.Printf("Next page: %s\n", nextPageCmd)
+		}
+	}
 
 	return nil
 }

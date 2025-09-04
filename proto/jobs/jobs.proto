@@ -163,15 +163,22 @@ message ListJobsRequest {
     string process_instance_id = 3;
     string process_key = 4;
     string state = 5; // PENDING, ACTIVATED, COMPLETED, FAILED, CANCELED
-    int32 limit = 6;
-    int32 offset = 7;
+    int32 limit = 6;                // Optional limit for number of results (deprecated, use page_size)
+    int32 offset = 7;               // Optional offset for pagination (deprecated, use page)
     string tenant_id = 8;
     bool include_variables = 9;
+    int32 page_size = 10;           // Number of items per page (default: 20)
+    int32 page = 11;                // Page number (1-based, default: 1)
+    string sort_by = 12;            // Sort field (default: "created_at")
+    string sort_order = 13;         // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 message ListJobsResponse {
     repeated JobInfo jobs = 1;
     int32 total_count = 2;
+    int32 page = 3;                 // Current page number
+    int32 page_size = 4;            // Number of items per page
+    int32 total_pages = 5;          // Total number of pages
 }
 
 message JobInfo {
