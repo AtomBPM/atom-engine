@@ -90,6 +90,7 @@ type ProcessComponentInterface interface {
 	CancelProcessInstance(instanceID string, reason string) error
 	ListProcessInstances(statusFilter string, processKeyFilter string, limit int) ([]*ProcessInstanceResult, error)
 	GetActiveTokens(instanceID string) ([]*models.Token, error)
+	GetTokensByProcessInstance(instanceID string) ([]*models.Token, error)
 }
 
 // MessageStats represents message statistics

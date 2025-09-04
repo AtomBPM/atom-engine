@@ -26,9 +26,17 @@ type DaemonCommand struct {
 // Создает новый обработчик команд демона
 func NewDaemonCommand() *DaemonCommand {
 	executable, _ := os.Executable()
+
+	// Try to create gRPC client from config, fallback to default if config fails
+	grpcClient, err := NewGRPCClientFromConfig()
+	if err != nil {
+		// Use default client if config loading fails
+		grpcClient = NewGRPCClient()
+	}
+
 	return &DaemonCommand{
 		executable: executable,
-		grpcClient: NewGRPCClient(),
+		grpcClient: grpcClient,
 	}
 }
 

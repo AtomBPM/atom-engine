@@ -17,6 +17,7 @@ import (
 	"atom-engine/src/core/auth"
 	"atom-engine/src/core/config"
 	"atom-engine/src/core/grpc"
+	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
 	"atom-engine/src/core/restapi"
 	"atom-engine/src/core/restapi/handlers"
@@ -180,10 +181,6 @@ func (c *Core) SendMessage(componentName, messageJSON string) error {
 	return processor.ProcessMessage(context.Background(), messageJSON)
 }
 
-
-
-
-
 // REST API interface implementations
 // Реализации интерфейсов для REST API
 
@@ -259,11 +256,14 @@ func (c *Core) WaitForParserResponse(timeoutMs int) (string, error) {
 		return "", fmt.Errorf("parser response channel not available")
 	}
 
+	logger.Debug("Waiting for parser response", logger.Int("timeout_ms", timeoutMs))
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 	select {
 	case response := <-responseChannel:
+		logger.Debug("Received parser response", logger.String("response_length", fmt.Sprintf("%d", len(response))))
 		return response, nil
 	case <-time.After(timeout):
+		logger.Warn("Parser response timeout", logger.Int("timeout_ms", timeoutMs))
 		return "", fmt.Errorf("timeout waiting for parser response after %dms", timeoutMs)
 	}
 }
@@ -280,11 +280,14 @@ func (c *Core) WaitForJobsResponse(timeoutMs int) (string, error) {
 		return "", fmt.Errorf("jobs response channel not available")
 	}
 
+	logger.Debug("Waiting for jobs response", logger.Int("timeout_ms", timeoutMs))
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 	select {
 	case response := <-responseChannel:
+		logger.Debug("Received jobs response", logger.String("response_length", fmt.Sprintf("%d", len(response))))
 		return response, nil
 	case <-time.After(timeout):
+		logger.Warn("Jobs response timeout", logger.Int("timeout_ms", timeoutMs))
 		return "", fmt.Errorf("timeout waiting for jobs response after %dms", timeoutMs)
 	}
 }

@@ -29,16 +29,6 @@ func (c *Config) LoadFromEnv() {
 		c.BasePath = env
 	}
 
-	// Server configuration
-	if env := os.Getenv("ATOM_SERVER_HOST"); env != "" {
-		c.Server.Host = env
-	}
-	if env := os.Getenv("ATOM_SERVER_PORT"); env != "" {
-		if port, err := strconv.Atoi(env); err == nil {
-			c.Server.Port = port
-		}
-	}
-
 	// gRPC configuration
 	if env := os.Getenv("ATOM_GRPC_HOST"); env != "" {
 		c.GRPC.Host = env

@@ -189,12 +189,15 @@ func (h *MessagesHandler) PublishMessage(c *gin.Context) {
 
 	// Create publish request message
 	publishReq := map[string]interface{}{
-		"operation":       "publish",
-		"tenant_id":       req.TenantID,
-		"message_name":    req.MessageName,
-		"correlation_key": req.CorrelationKey,
-		"variables":       req.Variables,
-		"ttl_seconds":     req.TTLSeconds,
+		"type":       "publish_message",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"tenant_id":       req.TenantID,
+			"message_name":    req.MessageName,
+			"correlation_key": req.CorrelationKey,
+			"variables":       req.Variables,
+			"ttl_seconds":     req.TTLSeconds,
+		},
 	}
 
 	// Send to messages component
@@ -283,10 +286,13 @@ func (h *MessagesHandler) ListBufferedMessages(c *gin.Context) {
 
 	// Create list request
 	listReq := map[string]interface{}{
-		"operation": "list_buffered",
-		"tenant_id": tenantID,
-		"limit":     params.Limit,
-		"offset":    utils.GetOffset(params.Page, params.Limit),
+		"type":       "list_buffered_messages",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"tenant_id": tenantID,
+			"limit":     params.Limit,
+			"offset":    utils.GetOffset(params.Page, params.Limit),
+		},
 	}
 
 	// Send to messages component and get response
@@ -349,10 +355,13 @@ func (h *MessagesHandler) ListSubscriptions(c *gin.Context) {
 
 	// Create list request
 	listReq := map[string]interface{}{
-		"operation": "list_subscriptions",
-		"tenant_id": tenantID,
-		"limit":     params.Limit,
-		"offset":    utils.GetOffset(params.Page, params.Limit),
+		"type":       "list_subscriptions",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"tenant_id": tenantID,
+			"limit":     params.Limit,
+			"offset":    utils.GetOffset(params.Page, params.Limit),
+		},
 	}
 
 	// Send to messages component and get response
@@ -399,8 +408,11 @@ func (h *MessagesHandler) GetStats(c *gin.Context) {
 
 	// Create stats request
 	statsReq := map[string]interface{}{
-		"operation": "stats",
-		"tenant_id": tenantID,
+		"type":       "get_stats",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"tenant_id": tenantID,
+		},
 	}
 
 	// Send to messages component and get response
@@ -445,8 +457,11 @@ func (h *MessagesHandler) CleanupExpired(c *gin.Context) {
 
 	// Create cleanup request
 	cleanupReq := map[string]interface{}{
-		"operation": "cleanup",
-		"tenant_id": tenantID,
+		"type":       "cleanup_expired",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"tenant_id": tenantID,
+		},
 	}
 
 	// Send to messages component and get response

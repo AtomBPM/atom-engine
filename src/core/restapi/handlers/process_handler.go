@@ -16,8 +16,9 @@ import (
 
 	"atom-engine/src/core/grpc"
 	"atom-engine/src/core/logger"
+	"atom-engine/src/core/models"
 	"atom-engine/src/core/restapi/middleware"
-	"atom-engine/src/core/restapi/models"
+	restmodels "atom-engine/src/core/restapi/models"
 	"atom-engine/src/core/restapi/utils"
 )
 
@@ -39,7 +40,8 @@ type ProcessComponentInterface interface {
 	GetProcessInstanceStatus(instanceID string) (*ProcessInstanceResult, error)
 	CancelProcessInstance(instanceID string, reason string) error
 	ListProcessInstances(statusFilter string, processKeyFilter string, limit int) ([]*ProcessInstanceResult, error)
-	GetActiveTokens(instanceID string) ([]*Token, error)
+	GetActiveTokens(instanceID string) ([]*models.Token, error)
+	GetTokensByProcessInstance(instanceID string) ([]*models.Token, error)
 }
 
 // Process data types
@@ -107,36 +109,36 @@ func (h *ProcessHandler) RegisterRoutes(router *gin.RouterGroup, authMiddleware 
 // @Tags processes
 // @Accept json
 // @Produce json
-// @Param request body models.StartProcessRequest true "Process start request"
-// @Success 201 {object} models.APIResponse{data=ProcessInstanceResult}
-// @Failure 400 {object} models.APIResponse{error=models.APIError}
-// @Failure 401 {object} models.APIResponse{error=models.APIError}
-// @Failure 403 {object} models.APIResponse{error=models.APIError}
-// @Failure 404 {object} models.APIResponse{error=models.APIError}
-// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Param request body restmodels.StartProcessRequest true "Process start request"
+// @Success 201 {object} restmodels.APIResponse{data=ProcessInstanceResult}
+// @Failure 400 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 401 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 403 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 404 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 500 {object} restmodels.APIResponse{error=restmodels.APIError}
 // @Security ApiKeyAuth
 // @Router /api/v1/processes [post]
 func (h *ProcessHandler) StartProcess(c *gin.Context) {
 	requestID := h.getRequestID(c)
 
 	// Parse request body
-	var req models.StartProcessRequest
+	var req restmodels.StartProcessRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Failed to parse start process request",
 			logger.String("request_id", requestID),
 			logger.String("error", err.Error()))
 
-		apiErr := models.BadRequestError("Invalid request body: " + err.Error())
-		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		apiErr := restmodels.BadRequestError("Invalid request body: " + err.Error())
+		c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
 	// Validate request
 	if err := req.Validate(); err != nil {
-		if apiErr, ok := err.(*models.APIError); ok {
-			c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		if apiErr, ok := err.(*restmodels.APIError); ok {
+			c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(apiErr, requestID))
 		} else {
-			c.JSON(http.StatusBadRequest, models.ErrorResponse(models.BadRequestError(err.Error()), requestID))
+			c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(restmodels.BadRequestError(err.Error()), requestID))
 		}
 		return
 	}
@@ -152,8 +154,8 @@ func (h *ProcessHandler) StartProcess(c *gin.Context) {
 		logger.Error("Process component not available",
 			logger.String("request_id", requestID))
 
-		apiErr := models.InternalServerError("Process service not available")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		apiErr := restmodels.InternalServerError("Process service not available")
+		c.JSON(http.StatusInternalServerError, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -166,8 +168,8 @@ func (h *ProcessHandler) StartProcess(c *gin.Context) {
 			logger.String("error", err.Error()))
 
 		apiErr := h.converter.GRPCErrorToAPIError(err)
-		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
-		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		statusCode := restmodels.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -176,7 +178,7 @@ func (h *ProcessHandler) StartProcess(c *gin.Context) {
 		logger.String("process_key", req.ProcessKey),
 		logger.String("instance_id", result.InstanceID))
 
-	c.JSON(http.StatusCreated, models.SuccessResponse(result, requestID))
+	c.JSON(http.StatusCreated, restmodels.SuccessResponse(result, requestID))
 }
 
 // ListProcesses handles GET /api/v1/processes
@@ -189,10 +191,10 @@ func (h *ProcessHandler) StartProcess(c *gin.Context) {
 // @Param status query string false "Status filter (active, completed, cancelled)"
 // @Param process_key query string false "Process key filter"
 // @Param tenant_id query string false "Tenant ID filter"
-// @Success 200 {object} models.PaginatedResponse{data=[]ProcessInstanceResult}
-// @Failure 401 {object} models.APIResponse{error=models.APIError}
-// @Failure 403 {object} models.APIResponse{error=models.APIError}
-// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Success 200 {object} restmodels.PaginatedResponse{data=[]ProcessInstanceResult}
+// @Failure 401 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 403 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 500 {object} restmodels.APIResponse{error=restmodels.APIError}
 // @Security ApiKeyAuth
 // @Router /api/v1/processes [get]
 func (h *ProcessHandler) ListProcesses(c *gin.Context) {
@@ -209,7 +211,7 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 	paginationHelper := utils.NewPaginationHelper()
 	params, apiErr := paginationHelper.ParseAndValidate(pageStr, limitStr)
 	if apiErr != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -217,8 +219,8 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 	if status != "" {
 		validStatuses := []string{"active", "completed", "cancelled"}
 		if apiErr := h.validator.ValidateStringEnum(status, "status", validStatuses); apiErr != nil {
-			c.JSON(http.StatusBadRequest, models.ErrorResponse(
-				models.NewValidationError("Invalid status filter", []models.ValidationError{*apiErr}),
+			c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(
+				restmodels.NewValidationError("Invalid status filter", []restmodels.ValidationError{*apiErr}),
 				requestID))
 			return
 		}
@@ -234,8 +236,8 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 	// Get process component
 	processComp := h.coreInterface.GetProcessComponent()
 	if processComp == nil {
-		apiErr := models.InternalServerError("Process service not available")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		apiErr := restmodels.InternalServerError("Process service not available")
+		c.JSON(http.StatusInternalServerError, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -247,8 +249,8 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 			logger.String("error", err.Error()))
 
 		apiErr := h.converter.GRPCErrorToAPIError(err)
-		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
-		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		statusCode := restmodels.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -260,7 +262,7 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 		logger.Int("count", len(instances)),
 		logger.Int("page", params.Page))
 
-	paginatedResp := models.PaginatedSuccessResponse(paginatedInstances, paginationInfo, requestID)
+	paginatedResp := restmodels.PaginatedSuccessResponse(paginatedInstances, paginationInfo, requestID)
 	c.JSON(http.StatusOK, paginatedResp)
 }
 
@@ -270,11 +272,11 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 // @Tags processes
 // @Produce json
 // @Param id path string true "Process instance ID"
-// @Success 200 {object} models.APIResponse{data=ProcessInstanceResult}
-// @Failure 401 {object} models.APIResponse{error=models.APIError}
-// @Failure 403 {object} models.APIResponse{error=models.APIError}
-// @Failure 404 {object} models.APIResponse{error=models.APIError}
-// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Success 200 {object} restmodels.APIResponse{data=ProcessInstanceResult}
+// @Failure 401 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 403 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 404 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 500 {object} restmodels.APIResponse{error=restmodels.APIError}
 // @Security ApiKeyAuth
 // @Router /api/v1/processes/{id} [get]
 func (h *ProcessHandler) GetProcessStatus(c *gin.Context) {
@@ -282,15 +284,15 @@ func (h *ProcessHandler) GetProcessStatus(c *gin.Context) {
 	instanceID := c.Param("id")
 
 	if instanceID == "" {
-		apiErr := models.BadRequestError("Process instance ID is required")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		apiErr := restmodels.BadRequestError("Process instance ID is required")
+		c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
 	// Validate instance ID format
 	if apiErr := h.validator.ValidateID(instanceID, "instance_id"); apiErr != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse(
-			models.NewValidationError("Invalid instance ID format", []models.ValidationError{*apiErr}),
+		c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(
+			restmodels.NewValidationError("Invalid instance ID format", []restmodels.ValidationError{*apiErr}),
 			requestID))
 		return
 	}
@@ -302,8 +304,8 @@ func (h *ProcessHandler) GetProcessStatus(c *gin.Context) {
 	// Get process component
 	processComp := h.coreInterface.GetProcessComponent()
 	if processComp == nil {
-		apiErr := models.InternalServerError("Process service not available")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		apiErr := restmodels.InternalServerError("Process service not available")
+		c.JSON(http.StatusInternalServerError, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -316,11 +318,11 @@ func (h *ProcessHandler) GetProcessStatus(c *gin.Context) {
 			logger.String("error", err.Error()))
 
 		apiErr := h.converter.GRPCErrorToAPIError(err)
-		if apiErr.Code == models.ErrorCodeResourceNotFound {
-			apiErr = models.ProcessNotFoundError(instanceID)
+		if apiErr.Code == restmodels.ErrorCodeResourceNotFound {
+			apiErr = restmodels.ProcessNotFoundError(instanceID)
 		}
-		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
-		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		statusCode := restmodels.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -329,7 +331,7 @@ func (h *ProcessHandler) GetProcessStatus(c *gin.Context) {
 		logger.String("instance_id", instanceID),
 		logger.String("state", result.State))
 
-	c.JSON(http.StatusOK, models.SuccessResponse(result, requestID))
+	c.JSON(http.StatusOK, restmodels.SuccessResponse(result, requestID))
 }
 
 // CancelProcess handles DELETE /api/v1/processes/:id
@@ -339,12 +341,12 @@ func (h *ProcessHandler) GetProcessStatus(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Process instance ID"
-// @Param request body models.CancelProcessRequest false "Cancellation request"
-// @Success 200 {object} models.APIResponse{data=models.DeleteResponse}
-// @Failure 401 {object} models.APIResponse{error=models.APIError}
-// @Failure 403 {object} models.APIResponse{error=models.APIError}
-// @Failure 404 {object} models.APIResponse{error=models.APIError}
-// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Param request body restmodels.CancelProcessRequest false "Cancellation request"
+// @Success 200 {object} restmodels.APIResponse{data=restmodels.DeleteResponse}
+// @Failure 401 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 403 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 404 {object} restmodels.APIResponse{error=restmodels.APIError}
+// @Failure 500 {object} restmodels.APIResponse{error=restmodels.APIError}
 // @Security ApiKeyAuth
 // @Router /api/v1/processes/{id} [delete]
 func (h *ProcessHandler) CancelProcess(c *gin.Context) {
@@ -352,13 +354,13 @@ func (h *ProcessHandler) CancelProcess(c *gin.Context) {
 	instanceID := c.Param("id")
 
 	if instanceID == "" {
-		apiErr := models.BadRequestError("Process instance ID is required")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		apiErr := restmodels.BadRequestError("Process instance ID is required")
+		c.JSON(http.StatusBadRequest, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
 	// Parse optional request body
-	var req models.CancelProcessRequest
+	var req restmodels.CancelProcessRequest
 	if c.Request.ContentLength > 0 {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			logger.Warn("Failed to parse cancel request body, using defaults",
@@ -375,8 +377,8 @@ func (h *ProcessHandler) CancelProcess(c *gin.Context) {
 	// Get process component
 	processComp := h.coreInterface.GetProcessComponent()
 	if processComp == nil {
-		apiErr := models.InternalServerError("Process service not available")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		apiErr := restmodels.InternalServerError("Process service not available")
+		c.JSON(http.StatusInternalServerError, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
@@ -389,15 +391,15 @@ func (h *ProcessHandler) CancelProcess(c *gin.Context) {
 			logger.String("error", err.Error()))
 
 		apiErr := h.converter.GRPCErrorToAPIError(err)
-		if apiErr.Code == models.ErrorCodeResourceNotFound {
-			apiErr = models.ProcessNotFoundError(instanceID)
+		if apiErr.Code == restmodels.ErrorCodeResourceNotFound {
+			apiErr = restmodels.ProcessNotFoundError(instanceID)
 		}
-		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
-		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		statusCode := restmodels.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, restmodels.ErrorResponse(apiErr, requestID))
 		return
 	}
 
-	response := &models.DeleteResponse{
+	response := &restmodels.DeleteResponse{
 		ID:      instanceID,
 		Message: "Process instance cancelled successfully",
 	}
@@ -406,29 +408,143 @@ func (h *ProcessHandler) CancelProcess(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("instance_id", instanceID))
 
-	c.JSON(http.StatusOK, models.SuccessResponse(response, requestID))
+	c.JSON(http.StatusOK, restmodels.SuccessResponse(response, requestID))
 }
 
 // GetProcessTokens handles GET /api/v1/processes/:id/tokens
 func (h *ProcessHandler) GetProcessTokens(c *gin.Context) {
 	requestID := h.getRequestID(c)
-	_ = c.Param("id") // instanceID for future implementation
+	instanceID := c.Param("id")
 
-	// Implementation details...
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Get process tokens endpoint not implemented yet"),
-		requestID))
+	logger.Debug("Getting process tokens",
+		logger.String("request_id", requestID),
+		logger.String("instance_id", instanceID))
+
+	// Get process component
+	processComp := h.coreInterface.GetProcessComponent()
+	if processComp == nil {
+		logger.Error("Process component not available",
+			logger.String("request_id", requestID))
+
+		apiErr := restmodels.InternalServerError("Process service not available")
+		c.JSON(http.StatusInternalServerError, restmodels.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Get active tokens for the process instance
+	tokens, err := processComp.GetActiveTokens(instanceID)
+	if err != nil {
+		logger.Error("Failed to get process tokens",
+			logger.String("request_id", requestID),
+			logger.String("instance_id", instanceID),
+			logger.String("error", err.Error()))
+
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		if apiErr.Code == restmodels.ErrorCodeResourceNotFound {
+			apiErr = restmodels.ProcessNotFoundError(instanceID)
+		}
+		statusCode := restmodels.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, restmodels.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Convert to REST API token format
+	restTokens := make([]*Token, len(tokens))
+	for i, token := range tokens {
+		restTokens[i] = &Token{
+			ID:                token.TokenID,
+			State:             TokenState(token.State),
+			ElementID:         token.CurrentElementID,
+			ProcessInstanceID: token.ProcessInstanceID,
+			CreatedAt:         token.CreatedAt.Unix(),
+			UpdatedAt:         token.UpdatedAt.Unix(),
+			Variables:         token.Variables,
+		}
+	}
+
+	logger.Info("Process tokens retrieved",
+		logger.String("request_id", requestID),
+		logger.String("instance_id", instanceID),
+		logger.Int("tokens_count", len(restTokens)))
+
+	pagination := &restmodels.PaginationInfo{
+		Page:    1,
+		Limit:   len(restTokens),
+		Total:   len(restTokens),
+		Pages:   1,
+		HasNext: false,
+		HasPrev: false,
+	}
+
+	c.JSON(http.StatusOK, restmodels.PaginatedSuccessResponse(restTokens, pagination, requestID))
 }
 
 // GetTokenTrace handles GET /api/v1/processes/:id/tokens/trace
 func (h *ProcessHandler) GetTokenTrace(c *gin.Context) {
 	requestID := h.getRequestID(c)
-	_ = c.Param("id") // instanceID for future implementation
+	instanceID := c.Param("id")
 
-	// Implementation details...
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Get token trace endpoint not implemented yet"),
-		requestID))
+	logger.Debug("Getting token trace",
+		logger.String("request_id", requestID),
+		logger.String("instance_id", instanceID))
+
+	// Get process component
+	processComp := h.coreInterface.GetProcessComponent()
+	if processComp == nil {
+		logger.Error("Process component not available",
+			logger.String("request_id", requestID))
+
+		apiErr := restmodels.InternalServerError("Process service not available")
+		c.JSON(http.StatusInternalServerError, restmodels.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Get all tokens for the process instance (for trace)
+	tokens, err := processComp.GetTokensByProcessInstance(instanceID)
+	if err != nil {
+		logger.Error("Failed to get token trace",
+			logger.String("request_id", requestID),
+			logger.String("instance_id", instanceID),
+			logger.String("error", err.Error()))
+
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		if apiErr.Code == restmodels.ErrorCodeResourceNotFound {
+			apiErr = restmodels.ProcessNotFoundError(instanceID)
+		}
+		statusCode := restmodels.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, restmodels.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Convert to REST API token format and sort by creation time
+	restTokens := make([]*Token, len(tokens))
+	for i, token := range tokens {
+		restTokens[i] = &Token{
+			ID:                token.TokenID,
+			State:             TokenState(token.State),
+			ElementID:         token.CurrentElementID,
+			ProcessInstanceID: token.ProcessInstanceID,
+			CreatedAt:         token.CreatedAt.Unix(),
+			UpdatedAt:         token.UpdatedAt.Unix(),
+			Variables:         token.Variables,
+		}
+	}
+
+	logger.Info("Token trace retrieved",
+		logger.String("request_id", requestID),
+		logger.String("instance_id", instanceID),
+		logger.Int("tokens_count", len(restTokens)))
+
+	pagination := &restmodels.PaginationInfo{
+		Page:    1,
+		Limit:   len(restTokens),
+		Total:   len(restTokens),
+		Pages:   1,
+		HasNext: false,
+		HasPrev: false,
+	}
+
+	c.JSON(http.StatusOK, restmodels.PaginatedSuccessResponse(restTokens, pagination, requestID))
 }
 
 // Helper methods

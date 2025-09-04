@@ -744,6 +744,7 @@ func (c *Component) sendResponse(response JobResponse) error {
 	}
 
 	c.logger.Debug("Sending job response", logger.String("type", response.Type), logger.String("request_id", response.RequestID))
+	c.logger.Debug("Job response JSON", logger.String("json", string(responseJSON)))
 
 	if c.responseChannel != nil {
 		select {

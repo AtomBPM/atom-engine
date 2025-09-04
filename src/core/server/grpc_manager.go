@@ -23,7 +23,7 @@ func (c *Core) startGRPCServer() error {
 	}
 
 	if grpcConfig.Port == 0 {
-		grpcConfig.Port = 9090 // Default port
+		grpcConfig.Port = 27500 // Default port
 	}
 
 	server := grpc.NewServer(grpcConfig, c)

@@ -14,17 +14,11 @@ base_path: "/home/user/cursor_ai/AtomBPMNProject/atom-engine/build"
 database:
   path: "data/base"
 
-# Main server configuration (legacy compatibility)
-# Конфигурация основного сервера (для совместимости)
-server:
-  host: "localhost"
-  port: 8080
-
 # gRPC server configuration
 # Конфигурация gRPC сервера
 grpc:
   host: "localhost"
-  port: 9090
+  port: 27500
 
 # REST API server configuration
 # Конфигурация REST API сервера
@@ -92,7 +86,7 @@ logger:
 auth:
   # Enable/disable authentication (disabled by default for backward compatibility)
   # Включить/отключить аутентификацию (отключена по умолчанию для обратной совместимости)
-  enabled: false
+  enabled: true
   
   # Global IP whitelist for authorization (localhost always allowed)
   # Глобальный whitelist IP адресов для авторизации (localhost всегда разрешен)

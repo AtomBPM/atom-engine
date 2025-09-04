@@ -166,11 +166,13 @@ func (h *ParserHandler) ParseBPMN(c *gin.Context) {
 
 	// Create parse request
 	parseReq := map[string]interface{}{
-		"operation":    "parse",
-		"file_content": bpmnContent,
-		"file_name":    header.Filename,
-		"process_id":   processID,
-		"force":        force,
+		"type":       "parse_bpmn_content",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"bpmn_content": bpmnContent,
+			"process_id":   processID,
+			"force":        force,
+		},
 	}
 
 	// Send to parser component
@@ -306,10 +308,13 @@ func (h *ParserHandler) ListProcesses(c *gin.Context) {
 
 	// Create list request
 	listReq := map[string]interface{}{
-		"operation": "list",
-		"page":      params.Page,
-		"limit":     params.Limit,
-		"tenant_id": tenantID,
+		"type":       "list_processes",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"page":      params.Page,
+			"limit":     params.Limit,
+			"tenant_id": tenantID,
+		},
 	}
 
 	// Send to parser component and get response

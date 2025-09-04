@@ -74,6 +74,7 @@ type DeleteProcessPayload struct {
 type JSONParseResult struct {
 	ProcessKey       string                 `json:"process_key"`
 	ProcessID        string                 `json:"process_id"`
+	ProcessName      string                 `json:"process_name"`
 	ProcessVersion   int                    `json:"process_version"`
 	ElementsCount    int                    `json:"elements_count"`
 	Success          bool                   `json:"success"`

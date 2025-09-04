@@ -22,7 +22,6 @@ type Config struct {
 	InstanceName string         `yaml:"instance_name"` // Instance/deployment name
 	BasePath     string         `yaml:"base_path"`     // Base path for all relative paths
 	Database     DatabaseConfig `yaml:"database"`
-	Server       ServerConfig   `yaml:"server"`
 	GRPC         GRPCConfig     `yaml:"grpc"`
 	RestAPI      RestAPIConfig  `yaml:"rest_api"`
 	Logger       LoggerConfig   `yaml:"logger"`
@@ -35,13 +34,6 @@ type Config struct {
 // Конфигурация базы данных
 type DatabaseConfig struct {
 	Path string `yaml:"path"`
-}
-
-// ServerConfig holds server configuration
-// Конфигурация сервера
-type ServerConfig struct {
-	Port int    `yaml:"port"`
-	Host string `yaml:"host"`
 }
 
 // GRPCConfig holds gRPC server configuration
@@ -166,20 +158,12 @@ func setDefaults(config *Config) {
 		config.InstanceName = "atom-engine"
 	}
 
-	// Server defaults
-	if config.Server.Host == "" {
-		config.Server.Host = "localhost"
-	}
-	if config.Server.Port == 0 {
-		config.Server.Port = 8080
-	}
-
 	// gRPC defaults
 	if config.GRPC.Host == "" {
 		config.GRPC.Host = "localhost"
 	}
 	if config.GRPC.Port == 0 {
-		config.GRPC.Port = 9090
+		config.GRPC.Port = 27500
 	}
 
 	// REST API defaults

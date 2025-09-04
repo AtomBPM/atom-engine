@@ -116,3 +116,9 @@ func (a *processComponentAdapter) ListProcessInstances(statusFilter string, proc
 func (a *processComponentAdapter) GetActiveTokens(instanceID string) ([]*models.Token, error) {
 	return a.comp.GetActiveTokens(instanceID)
 }
+
+// GetTokensByProcessInstance gets all tokens for process instance (for trace)
+// Получает все токены для экземпляра процесса (для трассировки)
+func (a *processComponentAdapter) GetTokensByProcessInstance(instanceID string) ([]*models.Token, error) {
+	return a.comp.GetTokensByProcessInstance(instanceID)
+}

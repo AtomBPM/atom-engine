@@ -47,6 +47,7 @@ type ComponentInterface interface {
 
 	// Token management
 	GetActiveTokens(instanceID string) ([]*models.Token, error)
+	GetTokensByProcessInstance(instanceID string) ([]*models.Token, error)
 	ExecuteToken(token *models.Token) error
 	ContinueExecution(instanceID string) error
 
@@ -336,6 +337,10 @@ func (c *Component) ListProcessInstances(statusFilter string, processKeyFilter s
 
 func (c *Component) GetActiveTokens(instanceID string) ([]*models.Token, error) {
 	return c.tokenManager.GetActiveTokens(instanceID)
+}
+
+func (c *Component) GetTokensByProcessInstance(instanceID string) ([]*models.Token, error) {
+	return c.tokenManager.GetTokensByProcessInstance(instanceID)
 }
 
 func (c *Component) ExecuteToken(token *models.Token) error {

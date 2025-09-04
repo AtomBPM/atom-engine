@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"time"
 
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
@@ -187,6 +188,78 @@ func (p *BPMNParser) registerElementParsers() {
 	}
 }
 
+// ParseBPMNContent parses BPMN XML content and returns JSON
+// Парсит содержимое BPMN XML и возвращает JSON
+func (p *BPMNParser) ParseBPMNContent(bpmnContent, processID string, force bool) (*models.BPMNProcess, error) {
+	logger.Info("Starting BPMN content parsing",
+		logger.String("content_length", fmt.Sprintf("%d", len(bpmnContent))),
+		logger.String("process_id", processID),
+		logger.Bool("force", force))
+
+	content := []byte(bpmnContent)
+
+	// Parse XML structure
+	xmlRoot, err := p.parseXMLStructure(content)
+	if err != nil {
+		logger.Error("Failed to parse XML structure",
+			logger.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to parse XML structure: %w", err)
+	}
+
+	// Create process data model
+	if processID == "" {
+		processID = p.extractProcessIDFromXML(xmlRoot)
+		logger.Info("Extracted process ID from XML", logger.String("process_id", processID))
+	}
+
+	processName := p.extractProcessNameFromXML(xmlRoot)
+	bpmnProcess := models.NewBPMNProcess(processID, processName)
+	bpmnProcess.BPMNID = models.GenerateBPMNID()
+	bpmnProcess.OriginalFile = "uploaded_content.bpmn" // No file path for content
+	bpmnProcess.ContentHash = models.GenerateContentHash(content)
+
+	logger.Info("Created BPMN process model",
+		logger.String("bpmn_id", bpmnProcess.BPMNID),
+		logger.String("process_id", processID),
+		logger.String("process_name", processName))
+
+	// Create parse context
+	context := &ParseContext{
+		ProcessID:     processID,
+		NamespaceMap:  p.extractNamespaces(xmlRoot),
+		ElementCounts: make(map[string]int),
+		AllElements:   make(map[string]interface{}),
+	}
+
+	logger.Info("Starting element parsing",
+		logger.Int("namespace_count", len(context.NamespaceMap)))
+
+	// Parse all elements
+	err = p.parseAllElements(xmlRoot, context, bpmnProcess)
+	if err != nil {
+		logger.Error("Failed to parse elements",
+			logger.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to parse elements: %w", err)
+	}
+
+	// Set final data
+	bpmnProcess.ElementCounts = context.ElementCounts
+	bpmnProcess.ParsedAt = time.Now()
+
+	// Calculate total elements
+	totalElements := 0
+	for _, count := range context.ElementCounts {
+		totalElements += count
+	}
+
+	logger.Info("Successfully parsed BPMN content",
+		logger.String("bpmn_id", bpmnProcess.BPMNID),
+		logger.String("process_id", bpmnProcess.ProcessID),
+		logger.Int("total_elements", totalElements))
+
+	return bpmnProcess, nil
+}
+
 // ParseBPMNFile parses BPMN XML file and returns JSON
 // Парсит BPMN XML файл и возвращает JSON
 func (p *BPMNParser) ParseBPMNFile(filePath, processID string, force bool) (*models.BPMNProcess, error) {
@@ -317,10 +390,6 @@ func (p *BPMNParser) parseAllElements(element *XMLElement, context *ParseContext
 	elementType := element.XMLName.Local
 	context.CurrentElement = elementType
 
-	// Count element
-	// Подсчет элемента
-	context.ElementCounts[elementType]++
-
 	// Skip diagram elements (they are not part of process logic)
 	// Пропускаем элементы диаграммы (они не часть логики процесса)
 	if p.isDiagramElement(elementType) {
@@ -328,6 +397,10 @@ func (p *BPMNParser) parseAllElements(element *XMLElement, context *ParseContext
 			logger.String("element_type", elementType))
 		return nil
 	}
+
+	// Count element only if it's not a diagram element
+	// Подсчет элемента только если это не элемент диаграммы
+	context.ElementCounts[elementType]++
 
 	// Find appropriate parser
 	// Поиск подходящего парсера

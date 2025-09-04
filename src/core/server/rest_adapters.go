@@ -11,6 +11,7 @@ package server
 import (
 	"context"
 
+	"atom-engine/src/core/models"
 	"atom-engine/src/core/restapi/handlers"
 )
 
@@ -41,7 +42,7 @@ func (c *Core) GetTimewheelStatsForREST() (*handlers.TimewheelStatsResponse, err
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &handlers.TimewheelStatsResponse{
 		TotalTimers:     grpcStats.TotalTimers,
 		PendingTimers:   grpcStats.PendingTimers,
@@ -59,7 +60,7 @@ func (c *Core) GetTimersListForREST(statusFilter string, limit int32) (*handlers
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert gRPC timer info to REST timer info
 	restTimers := make([]handlers.TimerInfo, len(grpcList.Timers))
 	for i, grpcTimer := range grpcList.Timers {
@@ -77,7 +78,7 @@ func (c *Core) GetTimersListForREST(statusFilter string, limit int32) (*handlers
 			WheelLevel:        grpcTimer.WheelLevel,
 		}
 	}
-	
+
 	return &handlers.TimersListResponse{
 		Timers:     restTimers,
 		TotalCount: grpcList.TotalCount,
@@ -128,9 +129,14 @@ func (a *processComponentRESTAdapter) ListProcessInstances(statusFilter string, 
 	return []*handlers.ProcessInstanceResult{}, nil
 }
 
-func (a *processComponentRESTAdapter) GetActiveTokens(instanceID string) ([]*handlers.Token, error) {
+func (a *processComponentRESTAdapter) GetActiveTokens(instanceID string) ([]*models.Token, error) {
 	// Mock implementation
-	return []*handlers.Token{}, nil
+	return []*models.Token{}, nil
+}
+
+func (a *processComponentRESTAdapter) GetTokensByProcessInstance(instanceID string) ([]*models.Token, error) {
+	// Mock implementation - for trace endpoint
+	return []*models.Token{}, nil
 }
 
 // Adapter for timewheel component

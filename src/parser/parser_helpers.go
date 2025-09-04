@@ -47,6 +47,33 @@ func (p *BPMNParser) isKnownMetadataElement(elementType string) bool {
 	return false
 }
 
+// isBusinessElement checks if element is a core BPMN business element
+// Проверяет является ли элемент основным бизнес-элементом BPMN
+func (p *BPMNParser) isBusinessElement(elementType string) bool {
+	businessElements := []string{
+		// Events
+		"startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent",
+		// Activities
+		"task", "userTask", "serviceTask", "scriptTask", "sendTask", "receiveTask",
+		"manualTask", "businessRuleTask", "callActivity", "subProcess",
+		// Gateways
+		"exclusiveGateway", "parallelGateway", "inclusiveGateway", "complexGateway", "eventBasedGateway",
+		// Flows
+		"sequenceFlow", "messageFlow", "association",
+		// Data
+		"dataObject", "dataStore", "dataStoreReference",
+		// Structural
+		"process", "collaboration", "participant",
+	}
+
+	for _, bizElement := range businessElements {
+		if elementType == bizElement {
+			return true
+		}
+	}
+	return false
+}
+
 // parseGenericElement parses any element generically
 // Общий парсинг любого элемента
 func (p *BPMNParser) parseGenericElement(element *XMLElement) map[string]interface{} {

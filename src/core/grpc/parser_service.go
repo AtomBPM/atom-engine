@@ -115,6 +115,9 @@ func (s *ParserService) ParseBPMNFile(ctx context.Context, req *parserpb.ParseBP
 		if processID, ok := resultData["process_id"].(string); ok {
 			response.ProcessId = processID
 		}
+		if processName, ok := resultData["process_name"].(string); ok {
+			response.ProcessName = processName
+		}
 		if elementsCount, ok := resultData["elements_count"].(float64); ok {
 			response.TotalElements = int32(elementsCount)
 			response.SuccessfulElements = int32(elementsCount) // Parser only saves successfully parsed elements

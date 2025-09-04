@@ -128,10 +128,55 @@ func (bp *BPMNProcess) UpdateElementCount(elementType string, count int) {
 	bp.UpdatedAt = time.Now()
 }
 
-// GetTotalElements returns total number of elements
-// Возвращает общее количество элементов
+// GetTotalElements returns total number of business elements only (excluding metadata and diagram elements)
+// Возвращает общее количество только бизнес-элементов (исключая метаданные и диаграммные элементы)
 func (bp *BPMNProcess) GetTotalElements() int {
+	businessCount := 0
+	for _, element := range bp.Elements {
+		if elementMap, ok := element.(map[string]interface{}); ok {
+			if elementType, exists := elementMap["type"]; exists {
+				if typeStr, ok := elementType.(string); ok {
+					if bp.isBusinessElementType(typeStr) {
+						businessCount++
+					}
+				}
+			}
+		}
+	}
+	return businessCount
+}
+
+// GetAllElements returns total number of all elements (including metadata)
+// Возвращает общее количество всех элементов (включая метаданные)
+func (bp *BPMNProcess) GetAllElements() int {
 	return len(bp.Elements)
+}
+
+// isBusinessElementType checks if element type is a business element
+// Проверяет является ли тип элемента бизнес-элементом
+func (bp *BPMNProcess) isBusinessElementType(elementType string) bool {
+	businessElements := []string{
+		// Events
+		"startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent",
+		// Activities
+		"task", "userTask", "serviceTask", "scriptTask", "sendTask", "receiveTask",
+		"manualTask", "businessRuleTask", "callActivity", "subProcess",
+		// Gateways
+		"exclusiveGateway", "parallelGateway", "inclusiveGateway", "complexGateway", "eventBasedGateway",
+		// Flows
+		"sequenceFlow", "messageFlow", "association",
+		// Data
+		"dataObject", "dataStore", "dataStoreReference",
+		// Structural
+		"process", "collaboration", "participant",
+	}
+
+	for _, bizElement := range businessElements {
+		if elementType == bizElement {
+			return true
+		}
+	}
+	return false
 }
 
 // SetStatus sets process status

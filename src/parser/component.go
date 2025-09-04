@@ -84,6 +84,84 @@ func (c *Component) IsReady() bool {
 	return c.ready
 }
 
+// ParseBPMNContent parses BPMN content and saves to storage
+// Парсит содержимое BPMN и сохраняет в storage
+func (c *Component) ParseBPMNContent(bpmnContent, processID string, force bool) (*ParseResult, error) {
+	if !c.ready {
+		return nil, fmt.Errorf("parser component not ready")
+	}
+
+	logger.Info("Parsing BPMN content",
+		logger.String("content_length", fmt.Sprintf("%d", len(bpmnContent))),
+		logger.String("process_id", processID),
+		logger.Bool("force", force))
+
+	// Parse BPMN content directly
+	bpmnProcess, err := c.parser.ParseBPMNContent(bpmnContent, processID, force)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse BPMN content: %w", err)
+	}
+
+	// Set additional metadata like in ParseBPMNFile
+	bpmnProcess.ParsedAt = time.Now()
+	bpmnProcess.Status = "active"
+
+	// Determine correct version number
+	maxVersion, err := c.storage.GetMaxProcessVersionByProcessID(bpmnProcess.ProcessID)
+	if err != nil {
+		logger.Warn("Failed to get max version for process",
+			logger.String("process_id", bpmnProcess.ProcessID),
+			logger.String("error", err.Error()))
+		bpmnProcess.ProcessVersion = 1 // Fallback to version 1
+	} else {
+		bpmnProcess.ProcessVersion = maxVersion + 1 // Increment version
+	}
+
+	// Convert to JSON for storage
+	jsonData, err := bpmnProcess.ToJSON()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to JSON: %w", err)
+	}
+
+	// Save to storage using processID:v{version} format
+	storageKey := fmt.Sprintf("%s:v%d", bpmnProcess.ProcessID, bpmnProcess.ProcessVersion)
+	err = c.storage.SaveBPMNProcess(storageKey, jsonData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save BPMN process to storage: %w", err)
+	}
+
+	// Save original content to filesystem (configured directory)
+	err = c.saveOriginalFile(bpmnProcess, []byte(bpmnContent))
+	if err != nil {
+		logger.Warn("Failed to save original content to filesystem",
+			logger.String("process_id", bpmnProcess.ProcessID),
+			logger.String("error", err.Error()))
+		// Don't fail the whole operation for this
+	}
+
+	// Create result
+	totalElements := 0
+	for _, count := range bpmnProcess.ElementCounts {
+		totalElements += count
+	}
+
+	result := &ParseResult{
+		BPMNID:        bpmnProcess.BPMNID,
+		ProcessID:     bpmnProcess.ProcessID,
+		TotalElements: totalElements,
+		ElementCounts: bpmnProcess.ElementCounts,
+		Success:       true,
+		ParsedAt:      bpmnProcess.ParsedAt,
+	}
+
+	logger.Info("BPMN content parsed successfully",
+		logger.String("bpmn_key", result.BPMNID),
+		logger.String("process_id", result.ProcessID),
+		logger.Int("elements", result.TotalElements))
+
+	return result, nil
+}
+
 // ParseBPMNFile parses BPMN file and saves to storage
 // Парсит BPMN файл и сохраняет в storage
 func (c *Component) ParseBPMNFile(filePath, processID string, force bool) (*ParseResult, error) {
@@ -528,6 +606,7 @@ func (c *Component) handleParseBPMNFile(ctx context.Context, request ParserReque
 		parseResult := JSONParseResult{
 			ProcessKey:     result.BPMNID,
 			ProcessID:      result.ProcessID,
+			ProcessName:    result.ProcessName,
 			ProcessVersion: 1, // TODO: Get actual version
 			ElementsCount:  result.TotalElements,
 			Success:        result.Success,
@@ -550,9 +629,25 @@ func (c *Component) handleParseBPMNContent(ctx context.Context, request ParserRe
 		return c.sendResponse(response)
 	}
 
-	// TODO: Implement ParseBPMNContent method in component
-	// For now, return not implemented error
-	response := CreateParserErrorResponse("parse_bpmn_content_response", request.RequestID, "parse_bpmn_content not implemented yet")
+	result, err := c.ParseBPMNContent(payload.BPMNContent, payload.ProcessID, payload.Force)
+
+	var response ParserResponse
+	if err != nil {
+		response = CreateParserErrorResponse("parse_bpmn_content_response", request.RequestID, err.Error())
+	} else {
+		parseResult := JSONParseResult{
+			ProcessKey:     result.BPMNID,
+			ProcessID:      result.ProcessID,
+			ProcessVersion: 1, // TODO: Get actual version
+			ElementsCount:  result.TotalElements,
+			Success:        result.Success,
+			Message:        "BPMN content parsed successfully",
+			ProcessData:    map[string]interface{}{"element_counts": result.ElementCounts},
+			Timestamp:      result.ParsedAt.Unix(),
+		}
+		response = CreateParserResponse("parse_bpmn_content_response", request.RequestID, parseResult)
+	}
+
 	return c.sendResponse(response)
 }
 

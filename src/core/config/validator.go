@@ -21,10 +21,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("base_path validation failed: %w", err)
 	}
 
-	if err := c.validateServer(); err != nil {
-		return fmt.Errorf("server validation failed: %w", err)
-	}
-
 	if err := c.validateGRPC(); err != nil {
 		return fmt.Errorf("grpc validation failed: %w", err)
 	}
@@ -64,20 +60,6 @@ func (c *Config) validateBasePath() error {
 		if err := os.MkdirAll(c.BasePath, 0755); err != nil {
 			return fmt.Errorf("cannot create base path %s: %w", c.BasePath, err)
 		}
-	}
-
-	return nil
-}
-
-// validateServer validates server configuration
-// Валидирует конфигурацию сервера
-func (c *Config) validateServer() error {
-	if c.Server.Port < 1024 || c.Server.Port > 65535 {
-		return fmt.Errorf("server port must be between 1024 and 65535, got %d", c.Server.Port)
-	}
-
-	if c.Server.Host == "" {
-		return fmt.Errorf("server host cannot be empty")
 	}
 
 	return nil
@@ -193,7 +175,6 @@ func (c *Config) validateLogger() error {
 // Проверяет конфликты портов
 func (c *Config) validatePortConflicts() error {
 	ports := map[int]string{
-		c.Server.Port:  "server",
 		c.GRPC.Port:    "grpc",
 		c.RestAPI.Port: "rest_api",
 	}

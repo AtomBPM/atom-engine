@@ -165,15 +165,18 @@ func (h *JobsHandler) CreateJob(c *gin.Context) {
 
 	// Create job request message
 	jobReq := map[string]interface{}{
-		"operation":           "create",
-		"type":                req.Type,
-		"process_instance_id": req.ProcessInstanceID,
-		"element_id":          req.ElementID,
-		"element_instance_id": req.ElementInstanceID,
-		"custom_headers":      req.CustomHeaders,
-		"variables":           req.Variables,
-		"retries":             req.Retries,
-		"timeout_ms":          req.TimeoutMs,
+		"type":       "create_job",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_type":            req.Type,
+			"process_instance_id": req.ProcessInstanceID,
+			"element_id":          req.ElementID,
+			"element_instance_id": req.ElementInstanceID,
+			"custom_headers":      req.CustomHeaders,
+			"variables":           req.Variables,
+			"retries":             req.Retries,
+			"timeout_ms":          req.TimeoutMs,
+		},
 	}
 
 	// Send to jobs component
@@ -261,12 +264,14 @@ func (h *JobsHandler) ActivateJobs(c *gin.Context) {
 
 	// Create activation request
 	activateReq := map[string]interface{}{
-		"operation":       "activate",
-		"type":            req.Type,
-		"worker":          req.Worker,
-		"max_jobs":        req.MaxJobs,
-		"timeout_ms":      req.TimeoutMs,
-		"fetch_variables": req.FetchVariables,
+		"type":       "activate_jobs",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_type":    req.Type,
+			"worker_name": req.Worker,
+			"max_jobs":    req.MaxJobs,
+			"timeout_ms":  req.TimeoutMs,
+		},
 	}
 
 	// Send to jobs component and get response
@@ -348,12 +353,15 @@ func (h *JobsHandler) ListJobs(c *gin.Context) {
 
 	// Create list request
 	listReq := map[string]interface{}{
-		"operation": "list",
-		"type":      jobType,
-		"worker":    worker,
-		"state":     state,
-		"limit":     params.Limit,
-		"offset":    utils.GetOffset(params.Page, params.Limit),
+		"type":       "list_jobs",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_type": jobType,
+			"worker":   worker,
+			"state":    state,
+			"limit":    params.Limit,
+			"offset":   utils.GetOffset(params.Page, params.Limit),
+		},
 	}
 
 	// Send to jobs component and get response
@@ -407,8 +415,11 @@ func (h *JobsHandler) GetJob(c *gin.Context) {
 
 	// Create get request
 	getReq := map[string]interface{}{
-		"operation": "get",
-		"job_key":   jobKey,
+		"type":       "get_job",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_id": jobKey,
+		},
 	}
 
 	// Send to jobs component and get response
@@ -482,17 +493,39 @@ func (h *JobsHandler) CompleteJob(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("job_key", jobKey))
 
-	// Create complete request - implementation continues...
-	_ = map[string]interface{}{
-		"operation": "complete",
-		"job_key":   jobKey,
-		"variables": req.Variables,
+	// Create complete request
+	completeReq := map[string]interface{}{
+		"type":       "complete_job",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_key":   jobKey,
+			"variables": req.Variables,
+		},
 	}
 
-	// Implementation continues...
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Complete job endpoint implementation in progress"),
-		requestID))
+	// Send to jobs component and get response
+	_, err := h.sendJobsRequest(completeReq, requestID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			apiErr := models.JobNotFoundError(jobKey)
+			c.JSON(http.StatusNotFound, models.ErrorResponse(apiErr, requestID))
+		} else {
+			apiErr := h.converter.GRPCErrorToAPIError(err)
+			statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+			c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		}
+		return
+	}
+
+	updateResp := &models.UpdateResponse{
+		Message: "Job completed successfully",
+	}
+
+	logger.Info("Job completed successfully",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey))
+
+	c.JSON(http.StatusOK, models.SuccessResponse(updateResp, requestID))
 }
 
 // FailJob handles PUT /api/v1/jobs/:key/fail

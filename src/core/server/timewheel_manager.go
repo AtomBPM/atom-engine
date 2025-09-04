@@ -63,19 +63,9 @@ func (c *Core) GetTimewheelStats() (*timewheelpb.GetTimeWheelStatsResponse, erro
 // GetTimersList returns list of timers for gRPC
 // Возвращает список таймеров для gRPC
 func (c *Core) GetTimersList(statusFilter string, limit int32) (*timewheelpb.ListTimersResponse, error) {
-	if c.timewheelComp == nil {
-		return &timewheelpb.ListTimersResponse{
-			Timers:     []*timewheelpb.TimerInfo{},
-			TotalCount: 0,
-		}, nil
-	}
-
-	// Mock implementation for now - in real implementation this would 
-	// query the actual timers from timewheel component
-	return &timewheelpb.ListTimersResponse{
-		Timers:     []*timewheelpb.TimerInfo{},
-		TotalCount: 0,
-	}, nil
+	// Use the internal implementation that actually loads timers from storage
+	// Используем внутреннюю реализацию которая загружает таймеры из storage
+	return c.GetTimersListInternal(statusFilter, limit)
 }
 
 // GetTimersListInternal returns list of timers for internal use
@@ -91,8 +81,14 @@ func (c *Core) GetTimersListInternal(statusFilter string, limit int32) (*timewhe
 	// Загружаем все таймеры из storage
 	timers, err := c.storage.LoadAllTimers()
 	if err != nil {
+		logger.Error("Failed to load timers from storage", logger.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to load timers: %w", err)
 	}
+
+	logger.Debug("GetTimersListInternal called",
+		logger.String("status_filter", statusFilter),
+		logger.Int("limit", int(limit)),
+		logger.Int("loaded_timers_count", len(timers)))
 
 	var filteredTimers []*timewheelpb.TimerInfo
 

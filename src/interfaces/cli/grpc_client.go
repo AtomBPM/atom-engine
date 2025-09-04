@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"atom-engine/src/core/config"
 	"atom-engine/src/core/logger"
 )
 
@@ -25,12 +26,34 @@ type GRPCClient struct {
 	address string
 }
 
-// NewGRPCClient creates new gRPC client instance
-// Создает новый экземпляр gRPC клиента
+// NewGRPCClient creates new gRPC client instance with default configuration
+// Создает новый экземпляр gRPC клиента с конфигурацией по умолчанию
 func NewGRPCClient() *GRPCClient {
+	return NewGRPCClientWithAddress("localhost:27500")
+}
+
+// NewGRPCClientWithAddress creates new gRPC client instance with specific address
+// Создает новый экземпляр gRPC клиента с указанным адресом
+func NewGRPCClientWithAddress(address string) *GRPCClient {
 	return &GRPCClient{
-		address: "localhost:9090",
+		address: address,
 	}
+}
+
+// NewGRPCClientFromConfig creates new gRPC client instance from configuration
+// Создает новый экземпляр gRPC клиента из конфигурации
+func NewGRPCClientFromConfig() (*GRPCClient, error) {
+	cfg, err := config.LoadConfigWithEnv()
+	if err != nil {
+		// Fallback to default address if config loading fails
+		logger.Debug("Failed to load config, using default address", logger.String("error", err.Error()))
+		return NewGRPCClient(), nil
+	}
+
+	address := fmt.Sprintf("%s:%d", cfg.GRPC.Host, cfg.GRPC.Port)
+	logger.Debug("Creating gRPC client from config", logger.String("address", address))
+
+	return NewGRPCClientWithAddress(address), nil
 }
 
 // Connect establishes connection to gRPC server
