@@ -46,7 +46,8 @@ func (er *ExecutorRegistry) registerExecutors() {
 	// Register gateway executors with process component access
 	logger.Info("Registering ExclusiveGatewayExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))
 	er.RegisterExecutor(NewExclusiveGatewayExecutor(er.component))
-	er.RegisterExecutor(&ParallelGatewayExecutor{})
+	logger.Info("Registering ParallelGatewayExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))
+	er.RegisterExecutor(NewParallelGatewayExecutor(er.component))
 	er.RegisterExecutor(&InclusiveGatewayExecutor{})
 	er.RegisterExecutor(&EventBasedGatewayExecutor{})
 

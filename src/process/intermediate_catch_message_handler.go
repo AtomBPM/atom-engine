@@ -112,6 +112,10 @@ func (icmh *IntermediateCatchMessageHandler) HandleMessageEvent(token *models.To
 	}
 	if messageID != "" {
 		correlationKey = icmh.extractCorrelationKeyFromMessage(token, messageID)
+
+		// Evaluate FEEL expressions in correlation key BEFORE checking buffered messages
+		// Вычисляем FEEL expressions в correlation key ПЕРЕД проверкой буферизованных сообщений
+		correlationKey = icmh.evaluateCorrelationKeyExpression(correlationKey, token)
 	}
 
 	// Get outgoing flows for later continuation
@@ -436,4 +440,80 @@ func (icmh *IntermediateCatchMessageHandler) proceedToNextElements(element map[s
 		NextElements: nextElements,
 		Completed:    false,
 	}, nil
+}
+
+// evaluateCorrelationKeyExpression evaluates FEEL expressions in correlation key for message correlation
+// Вычисляет FEEL expressions в correlation key для корреляции сообщений
+func (icmh *IntermediateCatchMessageHandler) evaluateCorrelationKeyExpression(correlationKey string, token *models.Token) string {
+	// If not a FEEL expression (doesn't start with =), return as is
+	// Если не FEEL expression (не начинается с =), возвращаем как есть
+	if correlationKey == "" || correlationKey[0] != '=' {
+		return correlationKey
+	}
+
+	// Get expression component through process component
+	// Получаем expression компонент через process компонент
+	if icmh.processComponent == nil {
+		logger.Warn("Process component not available for correlation key evaluation",
+			logger.String("token_id", token.TokenID),
+			logger.String("correlation_key", correlationKey))
+		return correlationKey[1:] // Fallback to remove "=" prefix
+	}
+
+	// Get core interface
+	core := icmh.processComponent.GetCore()
+	if core == nil {
+		logger.Warn("Core interface not available for correlation key evaluation",
+			logger.String("token_id", token.TokenID),
+			logger.String("correlation_key", correlationKey))
+		return correlationKey[1:] // Fallback to remove "=" prefix
+	}
+
+	// Get expression component
+	expressionCompInterface := core.GetExpressionComponent()
+	if expressionCompInterface == nil {
+		logger.Warn("Expression component not available for correlation key evaluation",
+			logger.String("token_id", token.TokenID),
+			logger.String("correlation_key", correlationKey))
+		return correlationKey[1:] // Fallback to remove "=" prefix
+	}
+
+	// Cast to expression evaluator interface
+	type ExpressionEvaluator interface {
+		EvaluateExpressionEngine(expression interface{}, variables map[string]interface{}) (interface{}, error)
+	}
+
+	expressionComp, ok := expressionCompInterface.(ExpressionEvaluator)
+	if !ok {
+		logger.Warn("Failed to cast expression component for correlation key evaluation",
+			logger.String("token_id", token.TokenID),
+			logger.String("correlation_key", correlationKey))
+		return correlationKey[1:] // Fallback to remove "=" prefix
+	}
+
+	// Evaluate FEEL expression
+	result, err := expressionComp.EvaluateExpressionEngine(correlationKey, token.Variables)
+	if err != nil {
+		logger.Error("Failed to evaluate FEEL expression in correlation key",
+			logger.String("token_id", token.TokenID),
+			logger.String("expression", correlationKey),
+			logger.String("error", err.Error()))
+		return correlationKey[1:] // Fallback to remove "=" prefix on error
+	}
+
+	// Convert result to string
+	evaluatedKey := fmt.Sprintf("%v", result)
+	if evaluatedKey != "" {
+		logger.Info("Message correlation key FEEL expression evaluated successfully",
+			logger.String("token_id", token.TokenID),
+			logger.String("original_expression", correlationKey),
+			logger.String("evaluated_key", evaluatedKey))
+		return evaluatedKey
+	}
+
+	// Fallback if result is empty
+	logger.Warn("FEEL expression evaluation resulted in empty value",
+		logger.String("token_id", token.TokenID),
+		logger.String("expression", correlationKey))
+	return correlationKey[1:] // Fallback to remove "=" prefix
 }

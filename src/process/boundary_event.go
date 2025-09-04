@@ -155,13 +155,9 @@ func (bee *BoundaryEventExecutor) handleMessageBoundaryEvent(token *models.Token
 		}
 	}
 
-	// Extract correlation key from token variables or use default
-	// Извлекаем correlation key из переменных токена или используем default
-	if corrKey, exists := token.Variables["correlationKey"]; exists {
-		if corrKeyStr, ok := corrKey.(string); ok {
-			correlationKey = corrKeyStr
-		}
-	}
+	// Extract and evaluate correlation key from token variables
+	// Извлекаем и вычисляем correlation key из переменных токена
+	correlationKey = bee.evaluateCorrelationKey(token)
 
 	// Create message subscription for this boundary event
 	// Создаем подписку на сообщение для этого граничного события
@@ -306,6 +302,89 @@ func (bee *BoundaryEventExecutor) executeRegularBoundaryEvent(token *models.Toke
 		Completed:    false,
 		// TODO: Handle activity cancellation for interrupting boundary events
 	}, nil
+}
+
+// evaluateCorrelationKey evaluates FEEL expressions in correlation key
+// Вычисляет FEEL expressions в correlation key
+func (bee *BoundaryEventExecutor) evaluateCorrelationKey(token *models.Token) string {
+	correlationKey := ""
+
+	// Extract correlation key from token variables
+	// Извлекаем correlation key из переменных токена
+	if corrKey, exists := token.Variables["correlationKey"]; exists {
+		if corrKeyStr, ok := corrKey.(string); ok {
+			// Check if this is a FEEL expression
+			// Проверяем является ли это FEEL expression
+			if len(corrKeyStr) > 0 && corrKeyStr[0] == '=' {
+				// Evaluate FEEL expression
+				// Вычисляем FEEL expression
+				if evaluatedKey := bee.evaluateFEELExpression(corrKeyStr, token); evaluatedKey != "" {
+					correlationKey = evaluatedKey
+				} else {
+					// Fallback to original value without "="
+					correlationKey = corrKeyStr[1:]
+				}
+			} else {
+				// Not a FEEL expression - use as is
+				correlationKey = corrKeyStr
+			}
+		}
+	}
+
+	return correlationKey
+}
+
+// evaluateFEELExpression evaluates FEEL expression using expression component
+// Вычисляет FEEL expression используя expression компонент
+func (bee *BoundaryEventExecutor) evaluateFEELExpression(expression string, token *models.Token) string {
+	// Get expression component through process component
+	// Получаем expression компонент через process компонент
+	if bee.processComponent == nil {
+		return ""
+	}
+
+	// Get core interface
+	core := bee.processComponent.GetCore()
+	if core == nil {
+		return ""
+	}
+
+	// Get expression component
+	expressionCompInterface := core.GetExpressionComponent()
+	if expressionCompInterface == nil {
+		return ""
+	}
+
+	// Cast to expression evaluator interface
+	type ExpressionEvaluator interface {
+		EvaluateExpressionEngine(expression interface{}, variables map[string]interface{}) (interface{}, error)
+	}
+
+	expressionComp, ok := expressionCompInterface.(ExpressionEvaluator)
+	if !ok {
+		return ""
+	}
+
+	// Evaluate FEEL expression
+	result, err := expressionComp.EvaluateExpressionEngine(expression, token.Variables)
+	if err != nil {
+		logger.Error("Failed to evaluate FEEL expression in correlation key",
+			logger.String("token_id", token.TokenID),
+			logger.String("expression", expression),
+			logger.String("error", err.Error()))
+		return ""
+	}
+
+	// Convert result to string
+	if resultStr := fmt.Sprintf("%v", result); resultStr != "" {
+		logger.Debug("Correlation key FEEL expression evaluated",
+			logger.String("token_id", token.TokenID),
+			logger.String("original", expression),
+			logger.String("evaluated", resultStr))
+		return resultStr
+	}
+
+	return ""
 }
 
 // GetElementType returns element type

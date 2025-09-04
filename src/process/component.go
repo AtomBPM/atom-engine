@@ -74,6 +74,11 @@ type ComponentInterface interface {
 	// Helper methods
 	GetBPMNProcessForToken(token *models.Token) (map[string]interface{}, error)
 
+	// Gateway synchronization methods
+	SaveGatewaySyncState(state *models.GatewaySyncState) error
+	LoadGatewaySyncState(gatewayID, processInstanceID string) (*models.GatewaySyncState, error)
+	DeleteGatewaySyncState(gatewayID, processInstanceID string) error
+
 	// Error boundary management
 	RegisterErrorBoundary(subscription *ErrorBoundarySubscription)
 	GetErrorBoundariesForToken(tokenID string) []*ErrorBoundarySubscription
@@ -402,6 +407,20 @@ func (c *Component) CancelBoundaryTimersForToken(tokenID string) error {
 
 func (c *Component) GetBPMNProcessForToken(token *models.Token) (map[string]interface{}, error) {
 	return c.timerManager.GetBPMNProcessForToken(token)
+}
+
+// Gateway synchronization methods implementation
+// Реализация методов синхронизации шлюзов
+func (c *Component) SaveGatewaySyncState(state *models.GatewaySyncState) error {
+	return c.storage.SaveGatewaySyncState(state)
+}
+
+func (c *Component) LoadGatewaySyncState(gatewayID, processInstanceID string) (*models.GatewaySyncState, error) {
+	return c.storage.LoadGatewaySyncState(gatewayID, processInstanceID)
+}
+
+func (c *Component) DeleteGatewaySyncState(gatewayID, processInstanceID string) error {
+	return c.storage.DeleteGatewaySyncState(gatewayID, processInstanceID)
 }
 
 // JobCallbackManagerInterface delegation

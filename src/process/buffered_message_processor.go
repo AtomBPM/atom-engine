@@ -80,11 +80,18 @@ func (bmp *BufferedMessageProcessor) findMatchingBufferedMessage(messages []*mod
 
 		// Check correlation key match (empty correlation key matches any)
 		if correlationKey != "" {
-			// Handle FEEL expressions in correlation key
+			// Note: FEEL expressions in correlation keys are now evaluated BEFORE calling this method
+			// in intermediate_catch_message_handler.go:evaluateCorrelationKeyExpression()
+			// Примечание: FEEL expressions в correlation keys теперь вычисляются ДО вызова этого метода
+			// в intermediate_catch_message_handler.go:evaluateCorrelationKeyExpression()
 			expectedKey := correlationKey
 			if strings.HasPrefix(correlationKey, "=") {
-				// Remove FEEL expression prefix for comparison
+				// This should not happen anymore, but keep fallback for safety
+				// Это больше не должно происходить, но оставляем fallback для безопасности
 				expectedKey = correlationKey[1:]
+				logger.Warn("Unexpected FEEL expression in correlation key - should be pre-evaluated",
+					logger.String("expression", correlationKey),
+					logger.String("fallback_key", expectedKey))
 			}
 
 			// Special handling for buffered messages with empty correlation key

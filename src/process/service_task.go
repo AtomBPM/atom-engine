@@ -473,19 +473,55 @@ func (ste *ServiceTaskExecutor) createBoundaryTimerForEvent(token *models.Token,
 			ProcessKey:        token.ProcessKey,
 		}
 
-		// Set timer definition based on type
-		// Устанавливаем timer определение в зависимости от типа
+		// Set timer definition based on type with FEEL expression evaluation
+		// Устанавливаем timer определение в зависимости от типа с evaluation FEEL expressions
 		if duration, exists := timerMap["duration"]; exists {
 			if durationStr, ok := duration.(string); ok {
-				timerRequest.TimeDuration = &durationStr
+				evaluatedDuration, err := ste.evaluateTimerExpression(durationStr, token)
+				if err != nil {
+					logger.Error("Failed to evaluate boundary timer duration expression",
+						logger.String("token_id", token.TokenID),
+						logger.String("expression", durationStr),
+						logger.String("error", err.Error()))
+					return fmt.Errorf("failed to evaluate boundary timer duration: %w", err)
+				}
+				evaluatedDurationStr := fmt.Sprintf("%v", evaluatedDuration)
+				timerRequest.TimeDuration = &evaluatedDurationStr
+				logger.Debug("Boundary timer duration evaluated",
+					logger.String("original", durationStr),
+					logger.String("evaluated", evaluatedDurationStr))
 			}
 		} else if cycle, exists := timerMap["cycle"]; exists {
 			if cycleStr, ok := cycle.(string); ok {
-				timerRequest.TimeCycle = &cycleStr
+				evaluatedCycle, err := ste.evaluateTimerExpression(cycleStr, token)
+				if err != nil {
+					logger.Error("Failed to evaluate boundary timer cycle expression",
+						logger.String("token_id", token.TokenID),
+						logger.String("expression", cycleStr),
+						logger.String("error", err.Error()))
+					return fmt.Errorf("failed to evaluate boundary timer cycle: %w", err)
+				}
+				evaluatedCycleStr := fmt.Sprintf("%v", evaluatedCycle)
+				timerRequest.TimeCycle = &evaluatedCycleStr
+				logger.Debug("Boundary timer cycle evaluated",
+					logger.String("original", cycleStr),
+					logger.String("evaluated", evaluatedCycleStr))
 			}
 		} else if date, exists := timerMap["date"]; exists {
 			if dateStr, ok := date.(string); ok {
-				timerRequest.TimeDate = &dateStr
+				evaluatedDate, err := ste.evaluateTimerExpression(dateStr, token)
+				if err != nil {
+					logger.Error("Failed to evaluate boundary timer date expression",
+						logger.String("token_id", token.TokenID),
+						logger.String("expression", dateStr),
+						logger.String("error", err.Error()))
+					return fmt.Errorf("failed to evaluate boundary timer date: %w", err)
+				}
+				evaluatedDateStr := fmt.Sprintf("%v", evaluatedDate)
+				timerRequest.TimeDate = &evaluatedDateStr
+				logger.Debug("Boundary timer date evaluated",
+					logger.String("original", dateStr),
+					logger.String("evaluated", evaluatedDateStr))
 			}
 		}
 
@@ -715,4 +751,58 @@ func (ste *ServiceTaskExecutor) getOutgoingFlows(boundaryEvent map[string]interf
 	}
 
 	return flows
+}
+
+// evaluateTimerExpression evaluates timer expressions using expression component
+// Вычисляет timer expressions используя expression компонент
+func (ste *ServiceTaskExecutor) evaluateTimerExpression(expression string, token *models.Token) (interface{}, error) {
+	// If not a FEEL expression (doesn't start with =), return as is
+	// Если не FEEL expression (не начинается с =), возвращаем как есть
+	if expression == "" || expression[0] != '=' {
+		return expression, nil
+	}
+
+	// Get expression component through process component
+	// Получаем expression компонент через process компонент
+	if ste.processComponent == nil {
+		return nil, fmt.Errorf("process component not available for expression evaluation")
+	}
+
+	// Get core interface
+	core := ste.processComponent.GetCore()
+	if core == nil {
+		return nil, fmt.Errorf("core interface not available for expression evaluation")
+	}
+
+	// Get expression component
+	expressionCompInterface := core.GetExpressionComponent()
+	if expressionCompInterface == nil {
+		return nil, fmt.Errorf("expression component not available")
+	}
+
+	// Cast to expression evaluator interface with EvaluateExpressionEngine method
+	// Приводим к интерфейсу expression evaluator с методом EvaluateExpressionEngine
+	type ExpressionEvaluator interface {
+		EvaluateExpressionEngine(expression interface{}, variables map[string]interface{}) (interface{}, error)
+	}
+	
+	expressionComp, ok := expressionCompInterface.(ExpressionEvaluator)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast expression component to ExpressionEvaluator interface")
+	}
+
+	// Evaluate FEEL expression using expression engine
+	// Вычисляем FEEL expression используя expression engine
+	result, err := expressionComp.EvaluateExpressionEngine(expression, token.Variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate FEEL expression '%s': %w", expression, err)
+	}
+
+	logger.Debug("Boundary timer expression evaluated successfully",
+		logger.String("token_id", token.TokenID),
+		logger.String("original_expression", expression),
+		logger.Any("evaluated_result", result),
+		logger.Any("token_variables", token.Variables))
+
+	return result, nil
 }

@@ -9,6 +9,8 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package process
 
 import (
+	"fmt"
+
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
 )
@@ -100,41 +102,101 @@ func (icth *IntermediateCatchTimerHandler) createTimerRequest(token *models.Toke
 		ProcessKey:        token.ProcessKey,
 	}
 
-	// Extract timer definition based on type
+	// Extract timer definition based on type with FEEL expression evaluation
 	timerType, _ := timerMap["type"].(string)
 	switch timerType {
 	case "duration":
 		if duration, exists := timerMap["duration"].(string); exists {
-			request.TimeDuration = &duration
-			logger.Debug("Timer duration extracted",
-				logger.String("duration", duration))
+			evaluatedDuration, err := icth.evaluateTimerExpression(duration, token)
+			if err != nil {
+				logger.Error("Failed to evaluate timer duration expression",
+					logger.String("token_id", token.TokenID),
+					logger.String("expression", duration),
+					logger.String("error", err.Error()))
+				return nil
+			}
+			durationStr := fmt.Sprintf("%v", evaluatedDuration)
+			request.TimeDuration = &durationStr
+			logger.Debug("Timer duration evaluated and extracted",
+				logger.String("original", duration),
+				logger.String("evaluated", durationStr))
 		}
 	case "date":
 		if date, exists := timerMap["date"].(string); exists {
-			request.TimeDate = &date
-			logger.Debug("Timer date extracted",
-				logger.String("date", date))
+			evaluatedDate, err := icth.evaluateTimerExpression(date, token)
+			if err != nil {
+				logger.Error("Failed to evaluate timer date expression",
+					logger.String("token_id", token.TokenID),
+					logger.String("expression", date),
+					logger.String("error", err.Error()))
+				return nil
+			}
+			dateStr := fmt.Sprintf("%v", evaluatedDate)
+			request.TimeDate = &dateStr
+			logger.Debug("Timer date evaluated and extracted",
+				logger.String("original", date),
+				logger.String("evaluated", dateStr))
 		}
 	case "cycle":
 		if cycle, exists := timerMap["cycle"].(string); exists {
-			request.TimeCycle = &cycle
-			logger.Debug("Timer cycle extracted",
-				logger.String("cycle", cycle))
+			evaluatedCycle, err := icth.evaluateTimerExpression(cycle, token)
+			if err != nil {
+				logger.Error("Failed to evaluate timer cycle expression",
+					logger.String("token_id", token.TokenID),
+					logger.String("expression", cycle),
+					logger.String("error", err.Error()))
+				return nil
+			}
+			cycleStr := fmt.Sprintf("%v", evaluatedCycle)
+			request.TimeCycle = &cycleStr
+			logger.Debug("Timer cycle evaluated and extracted",
+				logger.String("original", cycle),
+				logger.String("evaluated", cycleStr))
 		}
 	default:
 		// Fallback - try to extract any available timer definition
 		if duration, exists := timerMap["duration"].(string); exists {
-			request.TimeDuration = &duration
-			logger.Debug("Timer duration extracted (fallback)",
-				logger.String("duration", duration))
+			evaluatedDuration, err := icth.evaluateTimerExpression(duration, token)
+			if err != nil {
+				logger.Error("Failed to evaluate timer duration expression (fallback)",
+					logger.String("token_id", token.TokenID),
+					logger.String("expression", duration),
+					logger.String("error", err.Error()))
+				return nil
+			}
+			durationStr := fmt.Sprintf("%v", evaluatedDuration)
+			request.TimeDuration = &durationStr
+			logger.Debug("Timer duration evaluated and extracted (fallback)",
+				logger.String("original", duration),
+				logger.String("evaluated", durationStr))
 		} else if date, exists := timerMap["date"].(string); exists {
-			request.TimeDate = &date
-			logger.Debug("Timer date extracted (fallback)",
-				logger.String("date", date))
+			evaluatedDate, err := icth.evaluateTimerExpression(date, token)
+			if err != nil {
+				logger.Error("Failed to evaluate timer date expression (fallback)",
+					logger.String("token_id", token.TokenID),
+					logger.String("expression", date),
+					logger.String("error", err.Error()))
+				return nil
+			}
+			dateStr := fmt.Sprintf("%v", evaluatedDate)
+			request.TimeDate = &dateStr
+			logger.Debug("Timer date evaluated and extracted (fallback)",
+				logger.String("original", date),
+				logger.String("evaluated", dateStr))
 		} else if cycle, exists := timerMap["cycle"].(string); exists {
-			request.TimeCycle = &cycle
-			logger.Debug("Timer cycle extracted (fallback)",
-				logger.String("cycle", cycle))
+			evaluatedCycle, err := icth.evaluateTimerExpression(cycle, token)
+			if err != nil {
+				logger.Error("Failed to evaluate timer cycle expression (fallback)",
+					logger.String("token_id", token.TokenID),
+					logger.String("expression", cycle),
+					logger.String("error", err.Error()))
+				return nil
+			}
+			cycleStr := fmt.Sprintf("%v", evaluatedCycle)
+			request.TimeCycle = &cycleStr
+			logger.Debug("Timer cycle evaluated and extracted (fallback)",
+				logger.String("original", cycle),
+				logger.String("evaluated", cycleStr))
 		} else {
 			logger.Warn("No timer definition found in timer_data",
 				logger.String("token_id", token.TokenID),
@@ -144,4 +206,58 @@ func (icth *IntermediateCatchTimerHandler) createTimerRequest(token *models.Toke
 	}
 
 	return request
+}
+
+// evaluateTimerExpression evaluates timer expressions using expression component
+// Вычисляет timer expressions используя expression компонент
+func (icth *IntermediateCatchTimerHandler) evaluateTimerExpression(expression string, token *models.Token) (interface{}, error) {
+	// If not a FEEL expression (doesn't start with =), return as is
+	// Если не FEEL expression (не начинается с =), возвращаем как есть
+	if expression == "" || expression[0] != '=' {
+		return expression, nil
+	}
+
+	// Get expression component through process component
+	// Получаем expression компонент через process компонент
+	if icth.processComponent == nil {
+		return nil, fmt.Errorf("process component not available for expression evaluation")
+	}
+
+	// Get core interface
+	core := icth.processComponent.GetCore()
+	if core == nil {
+		return nil, fmt.Errorf("core interface not available for expression evaluation")
+	}
+
+	// Get expression component
+	expressionCompInterface := core.GetExpressionComponent()
+	if expressionCompInterface == nil {
+		return nil, fmt.Errorf("expression component not available")
+	}
+
+	// Cast to expression evaluator interface with EvaluateExpressionEngine method
+	// Приводим к интерфейсу expression evaluator с методом EvaluateExpressionEngine
+	type ExpressionEvaluator interface {
+		EvaluateExpressionEngine(expression interface{}, variables map[string]interface{}) (interface{}, error)
+	}
+	
+	expressionComp, ok := expressionCompInterface.(ExpressionEvaluator)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast expression component to ExpressionEvaluator interface")
+	}
+
+	// Evaluate FEEL expression using expression engine
+	// Вычисляем FEEL expression используя expression engine
+	result, err := expressionComp.EvaluateExpressionEngine(expression, token.Variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate FEEL expression '%s': %w", expression, err)
+	}
+
+	logger.Debug("Timer expression evaluated successfully",
+		logger.String("token_id", token.TokenID),
+		logger.String("original_expression", expression),
+		logger.Any("evaluated_result", result),
+		logger.Any("token_variables", token.Variables))
+
+	return result, nil
 }

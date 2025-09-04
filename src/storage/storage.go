@@ -87,6 +87,12 @@ type Storage interface {
 	ListMessageCorrelationResults(ctx context.Context, tenantID, messageName, processKey string, limit, offset int) ([]*models.MessageCorrelationResult, error)
 	DeleteMessageCorrelationResult(ctx context.Context, resultID string) error
 
+	// Gateway synchronization persistence methods
+	// Методы персистентности синхронизации шлюзов
+	SaveGatewaySyncState(state *models.GatewaySyncState) error
+	LoadGatewaySyncState(gatewayID, processInstanceID string) (*models.GatewaySyncState, error)
+	DeleteGatewaySyncState(gatewayID, processInstanceID string) error
+
 	// Incident persistence methods
 	// Методы персистентности инцидентов
 	SaveIncident(incident interface{}) error
