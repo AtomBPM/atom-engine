@@ -124,10 +124,15 @@ func (c *Component) IsRunning() bool {
 }
 
 // PublishMessage publishes a message for correlation
-func (c *Component) PublishMessage(ctx context.Context, tenantID, messageName, correlationKey string, variables map[string]interface{}, ttl *time.Duration) (*models.MessageCorrelationResult, error) {
-	c.logger.Info("Publishing message", logger.String("messageName", messageName), logger.String("correlationKey", correlationKey))
+func (c *Component) PublishMessage(ctx context.Context, tenantID, messageName, correlationKey, elementID string, variables map[string]interface{}, ttl *time.Duration) (*models.MessageCorrelationResult, error) {
+	c.logger.Info("Publishing message", logger.String("messageName", messageName), logger.String("correlationKey", correlationKey), logger.String("elementID", elementID))
 
-	return c.correlationMgr.PublishMessage(ctx, tenantID, messageName, correlationKey, variables, ttl)
+	return c.correlationMgr.PublishMessage(ctx, tenantID, messageName, correlationKey, elementID, variables, ttl)
+}
+
+func (c *Component) PublishMessageWithElementID(ctx context.Context, tenantID, messageName, correlationKey, elementID string, variables map[string]interface{}, ttl *time.Duration) (*models.MessageCorrelationResult, error) {
+	// Backward compatibility - delegate to main method
+	return c.PublishMessage(ctx, tenantID, messageName, correlationKey, elementID, variables, ttl)
 }
 
 // CorrelateMessage correlates message with specific process instance
@@ -316,7 +321,7 @@ func (c *Component) handlePublishMessage(ctx context.Context, request MessageReq
 		ttl = &duration
 	}
 
-	result, err := c.PublishMessage(ctx, payload.TenantID, payload.MessageName, payload.CorrelationKey, payload.Variables, ttl)
+	result, err := c.PublishMessage(ctx, payload.TenantID, payload.MessageName, payload.CorrelationKey, "", payload.Variables, ttl)
 
 	var response MessageResponse
 	if err != nil {

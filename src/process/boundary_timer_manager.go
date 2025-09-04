@@ -71,7 +71,7 @@ func (btm *BoundaryTimerManager) CreateBoundaryTimer(timerRequest *TimerRequest)
 		TimerType:         models.TimerTypeBoundary, // Boundary timer type
 		ProcessContext: &models.TimerProcessContext{
 			ProcessKey:      timerRequest.ProcessKey,
-			ProcessVersion:  1, // TODO: Extract from process key
+			ProcessVersion:  1, // Process version extraction not implemented
 			ProcessName:     "Boundary Timer",
 			ComponentSource: "process",
 		},

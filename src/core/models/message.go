@@ -38,6 +38,7 @@ type BufferedMessage struct {
 	BufferedAt     time.Time              `json:"buffered_at"`
 	ExpiresAt      *time.Time             `json:"expires_at,omitempty"`
 	Reason         string                 `json:"reason"`
+	ElementID      string                 `json:"element_id,omitempty"`
 }
 
 // MessageCorrelationResult represents message correlation result
@@ -78,7 +79,7 @@ func NewProcessMessageSubscription(tenantID, processKey, startEventID, messageNa
 }
 
 // NewBufferedMessage creates new buffered message
-func NewBufferedMessage(tenantID, name, correlationKey string, variables map[string]interface{}, reason string) *BufferedMessage {
+func NewBufferedMessage(tenantID, name, correlationKey string, variables map[string]interface{}, reason, elementID string) *BufferedMessage {
 	now := time.Now()
 	return &BufferedMessage{
 		ID:             GenerateID(),
@@ -89,6 +90,7 @@ func NewBufferedMessage(tenantID, name, correlationKey string, variables map[str
 		PublishedAt:    now,
 		BufferedAt:     now,
 		Reason:         reason,
+		ElementID:      elementID,
 	}
 }
 

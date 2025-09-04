@@ -90,22 +90,22 @@ type CoreInterface interface {
 	// Storage
 	GetStorageStatus() (*grpc.StorageStatusResponse, error)
 	GetStorageInfo() (*grpc.StorageInfoResponse, error)
-	
+
 	// Process management
 	GetProcessComponent() grpc.ProcessComponentInterface
-	
-	// Timer management  
+
+	// Timer management
 	GetTimewheelComponent() grpc.TimewheelComponentInterface
 	GetTimewheelStats() (*timewheelpb.GetTimeWheelStatsResponse, error)
 	GetTimersList(statusFilter string, limit int32) (*timewheelpb.ListTimersResponse, error)
-	
+
 	// Messaging
 	SendMessage(componentName, messageJSON string) error
 	WaitForParserResponse(timeoutMs int) (string, error)
 	WaitForJobsResponse(timeoutMs int) (string, error)
 	WaitForMessagesResponse(timeoutMs int) (string, error)
 	WaitForIncidentsResponse(timeoutMs int) (string, error)
-	
+
 	// Components
 	GetMessagesComponent() interface{}
 	GetJobsComponent() interface{}
@@ -392,27 +392,27 @@ func (s *Server) swaggerHandler(c *gin.Context) {
 	})
 }
 
-// Placeholder daemon handlers (basic functionality)
+// Daemon handlers - available through CLI interface
 func (s *Server) daemonStatusHandler(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Daemon status endpoint not implemented yet"),
+		models.NewAPIError("NOT_IMPLEMENTED", "Use CLI: atomd status"),
 		"daemon_status"))
 }
 
 func (s *Server) daemonStartHandler(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Daemon start endpoint not implemented yet"),
+		models.NewAPIError("NOT_IMPLEMENTED", "Use CLI: atomd start"),
 		"daemon_start"))
 }
 
 func (s *Server) daemonStopHandler(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Daemon stop endpoint not implemented yet"),
+		models.NewAPIError("NOT_IMPLEMENTED", "Use CLI: atomd stop"),
 		"daemon_stop"))
 }
 
 func (s *Server) daemonEventsHandler(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Daemon events endpoint not implemented yet"),
+		models.NewAPIError("NOT_IMPLEMENTED", "Use CLI: atomd events"),
 		"daemon_events"))
 }

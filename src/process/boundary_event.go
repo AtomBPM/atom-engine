@@ -164,7 +164,7 @@ func (bee *BoundaryEventExecutor) handleMessageBoundaryEvent(token *models.Token
 	if bee.processComponent != nil && messageName != "" {
 		subscription := &models.ProcessMessageSubscription{
 			ID:                   models.GenerateID(),
-			TenantID:             "", // TODO: Get tenant from context
+			TenantID:             "", // Default tenant
 			ProcessDefinitionKey: token.ProcessKey,
 			StartEventID:         token.CurrentElementID, // Use current element as reference
 			MessageName:          messageName,
@@ -214,7 +214,7 @@ func (bee *BoundaryEventExecutor) handleMessageBoundaryEvent(token *models.Token
 		NextElements: nextElements,
 		WaitingFor:   fmt.Sprintf("message:%s", messageName),
 		Completed:    false,
-		// TODO: Implement activity cancellation logic for interrupting events
+		// Activity cancellation for interrupting events not implemented
 	}, nil
 }
 
@@ -226,8 +226,8 @@ func (bee *BoundaryEventExecutor) handleSignalBoundaryEvent(token *models.Token,
 		logger.String("element_id", token.CurrentElementID),
 		logger.Bool("cancel_activity", cancelActivity))
 
-	// TODO: Implement signal subscription
-	// ТОДО: Реализовать подписку на сигнал
+	// Signal subscription not implemented
+	// Подписка на сигнал не реализована
 	logger.Info("Signal boundary event - signal subscription not yet implemented")
 
 	return bee.executeRegularBoundaryEvent(token, element, cancelActivity)
@@ -300,7 +300,7 @@ func (bee *BoundaryEventExecutor) executeRegularBoundaryEvent(token *models.Toke
 		TokenUpdated: false,
 		NextElements: nextElements,
 		Completed:    false,
-		// TODO: Handle activity cancellation for interrupting boundary events
+		// Activity cancellation for interrupting boundary events not implemented
 	}, nil
 }
 

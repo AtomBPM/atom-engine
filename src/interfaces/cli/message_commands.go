@@ -68,10 +68,8 @@ func (d *DaemonCommand) MessagePublish() error {
 	// Parse variables if provided
 	variablesMap := make(map[string]string)
 	if variables != "" {
-		// For now, simple implementation - store as single variable
-		// TODO: Implement proper JSON parsing
-		// Пока что простая реализация - сохраняем как одну переменную
-		// ТОДО: Реализовать правильный парсинг JSON
+		// Simple implementation - store as single variable
+		// Простая реализация - сохраняем как одну переменную
 		variablesMap["data"] = variables
 	}
 
@@ -332,7 +330,8 @@ func (d *DaemonCommand) MessageBuffered() error {
 
 	fmt.Printf("Buffered Messages\n")
 	fmt.Printf("=================\n")
-	fmt.Printf("Note: Buffered messages functionality needs to be implemented\n")
+	fmt.Printf("Use: atomd message list [tenant_id] [--page N] [--page-size N]\n")
+	fmt.Printf("The 'message list' command shows buffered messages with pagination support.\n")
 
 	return nil
 }
@@ -342,9 +341,50 @@ func (d *DaemonCommand) MessageBuffered() error {
 func (d *DaemonCommand) MessageCleanup() error {
 	logger.Debug("Cleaning up expired messages")
 
+	// Parse arguments for tenant filter
+	var tenantID string
+	args := os.Args[3:] // Skip "atomd message cleanup"
+
+	// Parse arguments: handle positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Positional arguments
+			if tenantID == "" {
+				tenantID = arg
+			}
+		}
+	}
+
+	logger.Debug("Message cleanup request", logger.String("tenant_id", tenantID))
+
+	conn, err := d.grpcClient.Connect()
+	if err != nil {
+		logger.Error("Failed to connect to daemon for message cleanup",
+			logger.String("error", err.Error()))
+		return fmt.Errorf("daemon is not running. Start daemon first with 'atomd start': %w", err)
+	}
+	defer conn.Close()
+
+	client := messagespb.NewMessagesServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := client.CleanupExpiredMessages(ctx, &messagespb.CleanupExpiredMessagesRequest{
+		TenantId: tenantID,
+	})
+	if err != nil {
+		logger.Error("Failed to cleanup expired messages", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to cleanup expired messages: %w", err)
+	}
+
 	fmt.Printf("Message Cleanup\n")
 	fmt.Printf("===============\n")
-	fmt.Printf("Note: Message cleanup functionality needs to be implemented\n")
+	fmt.Printf("Success: %t\n", resp.Success)
+	fmt.Printf("Message: %s\n", resp.Message)
+	if resp.Success {
+		fmt.Printf("Cleaned up messages: %d\n", resp.CleanedCount)
+	}
 
 	return nil
 }
@@ -400,7 +440,87 @@ func (d *DaemonCommand) MessageTest() error {
 
 	fmt.Printf("Message Test\n")
 	fmt.Printf("============\n")
-	fmt.Printf("Note: Message test functionality needs to be implemented\n")
+	fmt.Printf("Testing basic message functionality...\n\n")
+
+	conn, err := d.grpcClient.Connect()
+	if err != nil {
+		logger.Error("Failed to connect to daemon for message test",
+			logger.String("error", err.Error()))
+		return fmt.Errorf("daemon is not running. Start daemon first with 'atomd start': %w", err)
+	}
+	defer conn.Close()
+
+	client := messagespb.NewMessagesServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Test 1: Publish a test message
+	fmt.Printf("1. Testing message publish...")
+	testMessageName := "test_message"
+	testCorrelationKey := "test_key_123"
+	testVariables := map[string]string{"test": "value"}
+
+	pubResp, err := client.PublishMessage(ctx, &messagespb.PublishMessageRequest{
+		TenantId:       "",
+		MessageName:    testMessageName,
+		CorrelationKey: testCorrelationKey,
+		Variables:      testVariables,
+		TtlSeconds:     60, // 1 minute TTL
+	})
+
+	if err != nil {
+		fmt.Printf(" FAILED\n")
+		fmt.Printf("   Error: %s\n", err.Error())
+	} else if !pubResp.Success {
+		fmt.Printf(" FAILED\n")
+		fmt.Printf("   Error: %s\n", pubResp.Message)
+	} else {
+		fmt.Printf(" PASSED\n")
+		fmt.Printf("   Message ID: %s\n", pubResp.MessageId)
+	}
+
+	// Test 2: List buffered messages
+	fmt.Printf("\n2. Testing message list...")
+	listResp, err := client.ListBufferedMessages(ctx, &messagespb.ListBufferedMessagesRequest{
+		TenantId:  "",
+		PageSize:  10,
+		Page:      1,
+		SortBy:    "published_at",
+		SortOrder: "DESC",
+	})
+
+	if err != nil {
+		fmt.Printf(" FAILED\n")
+		fmt.Printf("   Error: %s\n", err.Error())
+	} else if !listResp.Success {
+		fmt.Printf(" FAILED\n")
+		fmt.Printf("   Error: %s\n", listResp.Message)
+	} else {
+		fmt.Printf(" PASSED\n")
+		fmt.Printf("   Found %d buffered messages\n", listResp.TotalCount)
+	}
+
+	// Test 3: Get message stats
+	fmt.Printf("\n3. Testing message stats...")
+	statsResp, err := client.GetMessageStats(ctx, &messagespb.GetMessageStatsRequest{})
+
+	if err != nil {
+		fmt.Printf(" FAILED\n")
+		fmt.Printf("   Error: %s\n", err.Error())
+	} else if !statsResp.Success {
+		fmt.Printf(" FAILED\n")
+		fmt.Printf("   Error: %s\n", statsResp.Message)
+	} else {
+		fmt.Printf(" PASSED\n")
+		fmt.Printf("   Total messages: %d, Buffered: %d\n",
+			statsResp.Stats.TotalMessages, statsResp.Stats.BufferedMessages)
+	}
+
+	fmt.Printf("\nMessage test completed.\n")
+	fmt.Printf("For detailed testing, use individual commands:\n")
+	fmt.Printf("  atomd message publish <name> [correlation_key] [variables]\n")
+	fmt.Printf("  atomd message list [tenant_id]\n")
+	fmt.Printf("  atomd message stats\n")
 
 	return nil
 }

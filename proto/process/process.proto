@@ -14,9 +14,6 @@ option go_package = "atom-engine/proto/process/processpb";
 
 // Process service for BPMN process operations
 service ProcessService {
-  // Deploy a BPMN process
-  rpc DeployProcess(DeployProcessRequest) returns (DeployProcessResponse);
-  
   // Start a process instance
   rpc StartProcessInstance(StartProcessInstanceRequest) returns (StartProcessInstanceResponse);
   
@@ -34,21 +31,6 @@ service ProcessService {
   
   // Get token details
   rpc GetTokenStatus(GetTokenStatusRequest) returns (GetTokenStatusResponse);
-}
-
-// Request for process deployment
-message DeployProcessRequest {
-  string bpmn_content = 1;
-  string process_name = 2;
-  string version = 3;
-}
-
-// Response for process deployment
-message DeployProcessResponse {
-  string process_id = 1;
-  string version = 2;
-  bool success = 3;
-  string message = 4;
 }
 
 // Request for starting process instance

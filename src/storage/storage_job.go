@@ -84,7 +84,7 @@ func (bs *BadgerStorage) ListJobsByType(ctx context.Context, jobType string, sta
 		defer it.Close()
 
 		count := 0
-		for it.Seek(prefix); it.ValidForPrefix(prefix) && count < limit; it.Next() {
+		for it.Seek(prefix); it.ValidForPrefix(prefix) && (limit <= 0 || count < limit); it.Next() {
 			item := it.Item()
 			err := item.Value(func(val []byte) error {
 				var job models.Job

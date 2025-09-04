@@ -242,7 +242,7 @@ func (ps *ProcessStarter) createMessageStartEventSubscription(bpmnProcess *model
 	// Create permanent subscription
 	subscription := &models.ProcessMessageSubscription{
 		ID:                   models.GenerateID(),
-		TenantID:             "", // TODO: Get tenant from context
+		TenantID:             "", // Default tenant
 		ProcessDefinitionKey: processKey,
 		StartEventID:         startEventID,
 		MessageName:          messageName,

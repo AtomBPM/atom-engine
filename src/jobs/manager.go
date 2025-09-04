@@ -533,29 +533,34 @@ func (jm *JobManager) ListJobs(ctx context.Context, filter *ListJobsFilter) ([]*
 			continue
 		}
 
-		// Filter by process key (would need process definition lookup)
-		// TODO: implement process key filtering
+		// Filter by process key (process definition lookup not implemented)
 
 		filteredJobs = append(filteredJobs, job)
 
-		// Apply limit
-		if len(filteredJobs) >= filter.Limit {
+		// Apply limit if specified (0 means no limit)
+		if filter.Limit > 0 && len(filteredJobs) >= filter.Limit {
 			break
 		}
 	}
 
-	// Apply offset
+	// Apply offset and limit for pagination
 	start := filter.Offset
 	if start > len(filteredJobs) {
 		start = len(filteredJobs)
 	}
 
-	end := start + filter.Limit
-	if end > len(filteredJobs) {
-		end = len(filteredJobs)
+	var result []*models.Job
+	if filter.Limit > 0 {
+		// Apply limit
+		end := start + filter.Limit
+		if end > len(filteredJobs) {
+			end = len(filteredJobs)
+		}
+		result = filteredJobs[start:end]
+	} else {
+		// No limit, return all from offset
+		result = filteredJobs[start:]
 	}
-
-	result := filteredJobs[start:end]
 	total := len(filteredJobs)
 
 	jm.logger.Debug("Jobs listed", logger.Int("returned", len(result)))

@@ -27,7 +27,6 @@ type jobsServiceServer struct {
 
 // getJobsComponent helper function deprecated - use JSON communication instead
 // helper функция getJobsComponent устарела - используйте JSON коммуникацию
-// TODO: Migrate all remaining methods to JSON communication
 func getJobsComponent(core CoreInterface) (*jobs.Component, error) {
 	componentIf := core.GetJobsComponent()
 	if componentIf == nil {
@@ -161,7 +160,7 @@ func (s *jobsServiceServer) ActivateJobs(req *jobspb.ActivateJobsRequest, stream
 
 	// Wait for response from jobs component
 	// Ожидаем ответ от компонента jobs
-	responseJSON, err := s.core.WaitForJobsResponse(10000) // 10 second timeout
+	responseJSON, err := s.core.WaitForJobsResponse(2000) // 2 second timeout - reduced from 10 seconds
 	if err != nil {
 		logger.Error("Failed to get jobs response", logger.String("error", err.Error()))
 		return fmt.Errorf("failed to get jobs response: %w", err)

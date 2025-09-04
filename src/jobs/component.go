@@ -345,7 +345,7 @@ func (c *Component) GetJobStats() (interface{}, error) {
 		ActiveJobs:     activeJobs,
 		CompletedJobs:  completedJobs,
 		FailedJobs:     failedJobs,
-		ActivatedToday: 0, // TODO: Implement daily counts if needed
+		ActivatedToday: 0, // Daily counts not implemented
 		CompletedToday: 0,
 	}, nil
 }

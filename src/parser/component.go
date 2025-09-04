@@ -607,7 +607,7 @@ func (c *Component) handleParseBPMNFile(ctx context.Context, request ParserReque
 			ProcessKey:     result.BPMNID,
 			ProcessID:      result.ProcessID,
 			ProcessName:    result.ProcessName,
-			ProcessVersion: 1, // TODO: Get actual version
+			ProcessVersion: 1, // Actual version extraction not implemented
 			ElementsCount:  result.TotalElements,
 			Success:        result.Success,
 			Message:        "BPMN file parsed successfully",
@@ -638,7 +638,7 @@ func (c *Component) handleParseBPMNContent(ctx context.Context, request ParserRe
 		parseResult := JSONParseResult{
 			ProcessKey:     result.BPMNID,
 			ProcessID:      result.ProcessID,
-			ProcessVersion: 1, // TODO: Get actual version
+			ProcessVersion: 1, // Actual version extraction not implemented
 			ElementsCount:  result.TotalElements,
 			Success:        result.Success,
 			Message:        "BPMN content parsed successfully",
@@ -665,8 +665,8 @@ func (c *Component) handleValidateBPMN(ctx context.Context, request ParserReques
 	if payload.FilePath != "" {
 		_, err = c.ParseBPMNFile(payload.FilePath, "", false)
 	} else {
-		// TODO: Implement content validation
-		err = fmt.Errorf("content validation not implemented yet")
+		// Content validation not implemented
+		err = fmt.Errorf("content validation not implemented")
 	}
 
 	validationResult := ValidationResult{
@@ -795,10 +795,10 @@ func (c *Component) handleGetStats(ctx context.Context, request ParserRequest) e
 		statsResult := ParserStatsResult{
 			TotalProcesses:       stats.TotalProcesses,
 			ActiveProcesses:      stats.StatusCounts["active"],
-			ParsedToday:          0, // TODO: Implement today count
-			LastParseTime:        0, // TODO: Implement last parse time
-			AverageElementsCount: 0, // TODO: Calculate average
-			ParseErrors:          0, // TODO: Track parse errors
+			ParsedToday:          0, // Today count not implemented
+			LastParseTime:        0, // Last parse time not implemented
+			AverageElementsCount: 0, // Average calculation not implemented
+			ParseErrors:          0, // Parse error tracking not implemented
 		}
 		if stats.TotalProcesses > 0 {
 			statsResult.AverageElementsCount = stats.TotalElements / stats.TotalProcesses

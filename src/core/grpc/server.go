@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"atom-engine/proto/expression/expressionpb"
 	"atom-engine/proto/incidents/incidentspb"
 	"atom-engine/proto/jobs/jobspb"
 	"atom-engine/proto/messages/messagespb"
@@ -194,6 +195,9 @@ func (s *Server) Start() error {
 
 	// Register incidents service
 	incidentspb.RegisterIncidentsServiceServer(s.grpcServer, &incidentsServiceServer{core: s.core})
+
+	// Register expression service
+	expressionpb.RegisterExpressionServiceServer(s.grpcServer, &expressionServiceServer{core: s.core})
 
 	// Enable reflection for development
 	reflection.Register(s.grpcServer)

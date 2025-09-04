@@ -24,5 +24,6 @@ type MessageCallbackManagerInterface interface {
 	CreateMessageSubscription(subscription *models.ProcessMessageSubscription) error
 	DeleteMessageSubscription(subscriptionID string) error
 	PublishMessage(messageName, correlationKey string, variables map[string]interface{}) (*models.MessageCorrelationResult, error)
+	PublishMessageWithElementID(messageName, correlationKey, elementID string, variables map[string]interface{}) (*models.MessageCorrelationResult, error)
 	CorrelateMessage(messageName, correlationKey, processInstanceID string, variables map[string]interface{}) (*models.MessageCorrelationResult, error)
 }

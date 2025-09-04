@@ -162,15 +162,15 @@ func (se *StartEventExecutor) handleMessageStartEvent(token *models.Token, eleme
 		}
 	}
 
-	// TODO: Extract correlation key from message definition or token context
-	// ТОДО: Извлечь correlation key из message definition или контекста токена
+	// Correlation key extraction from message definition not implemented
+	// Извлечение correlation key из message definition не реализовано
 
 	// Create message subscription for this start event
 	// Создаем подписку на сообщение для этого стартового события
 	if se.processComponent != nil && messageName != "" {
 		subscription := &models.ProcessMessageSubscription{
 			ID:                   models.GenerateID(),
-			TenantID:             "", // TODO: Get tenant from context
+			TenantID:             "", // Default tenant
 			ProcessDefinitionKey: token.ProcessKey,
 			StartEventID:         token.CurrentElementID,
 			MessageName:          messageName,

@@ -680,14 +680,5 @@ func (h *ExpressionHandler) getRequestID(c *gin.Context) string {
 	if requestID := c.GetHeader("X-Request-ID"); requestID != "" {
 		return requestID
 	}
-	return "expression_" + h.generateRandomString(8)
-}
-
-func (h *ExpressionHandler) generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
-	}
-	return string(result)
+	return utils.GenerateSecureRequestID("expression")
 }

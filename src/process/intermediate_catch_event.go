@@ -86,7 +86,7 @@ func (icee *IntermediateCatchEventExecutor) handleSignalEvent(token *models.Toke
 		logger.String("token_id", token.TokenID),
 		logger.String("element_id", token.CurrentElementID))
 
-	// TODO: Implement signal subscription
+	// Signal subscription not implemented
 	// For now, proceed immediately as signals are not implemented
 	logger.Warn("Signal events not yet implemented - proceeding immediately",
 		logger.String("token_id", token.TokenID),

@@ -197,6 +197,7 @@ func (s *messagesServiceServer) ListBufferedMessages(ctx context.Context, req *m
 			BufferedAt:     msg.BufferedAt.Unix(),
 			ExpiresAt:      expiresAt,
 			Reason:         msg.Reason,
+			ElementId:      msg.ElementID,
 		}
 	}
 

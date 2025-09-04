@@ -99,7 +99,7 @@ func (bs *BadgerStorage) ListProcessMessageSubscriptions(ctx context.Context, te
 
 		count := 0
 		skipped := 0
-		for it.Seek(prefix); it.ValidForPrefix(prefix) && count < limit; it.Next() {
+		for it.Seek(prefix); it.ValidForPrefix(prefix) && (limit <= 0 || count < limit); it.Next() {
 			item := it.Item()
 			err := item.Value(func(val []byte) error {
 				var sub models.ProcessMessageSubscription
@@ -213,7 +213,7 @@ func (bs *BadgerStorage) ListBufferedMessages(ctx context.Context, tenantID stri
 
 		count := 0
 		skipped := 0
-		for it.Seek(prefix); it.ValidForPrefix(prefix) && count < limit; it.Next() {
+		for it.Seek(prefix); it.ValidForPrefix(prefix) && (limit <= 0 || count < limit); it.Next() {
 			item := it.Item()
 			err := item.Value(func(val []byte) error {
 				var msg models.BufferedMessage
@@ -296,7 +296,7 @@ func (bs *BadgerStorage) ListMessageCorrelationResults(ctx context.Context, tena
 
 		count := 0
 		skipped := 0
-		for it.Seek(prefix); it.ValidForPrefix(prefix) && count < limit; it.Next() {
+		for it.Seek(prefix); it.ValidForPrefix(prefix) && (limit <= 0 || count < limit); it.Next() {
 			item := it.Item()
 			err := item.Value(func(val []byte) error {
 				var result models.MessageCorrelationResult

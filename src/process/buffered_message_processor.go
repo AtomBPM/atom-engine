@@ -260,6 +260,12 @@ func (bmp *BufferedMessageProcessor) DeleteMessageSubscription(subscriptionID st
 // PublishMessage publishes a message for correlation
 // Публикует сообщение для корреляции
 func (bmp *BufferedMessageProcessor) PublishMessage(messageName, correlationKey string, variables map[string]interface{}) (*models.MessageCorrelationResult, error) {
+	return bmp.PublishMessageWithElementID(messageName, correlationKey, "", variables)
+}
+
+// PublishMessageWithElementID publishes message with element ID for correlation
+// Публикует сообщение с element ID для корреляции
+func (bmp *BufferedMessageProcessor) PublishMessageWithElementID(messageName, correlationKey, elementID string, variables map[string]interface{}) (*models.MessageCorrelationResult, error) {
 	messagesComponent := bmp.core.GetMessagesComponent()
 	if messagesComponent == nil {
 		return nil, fmt.Errorf("messages component not available")
@@ -270,18 +276,20 @@ func (bmp *BufferedMessageProcessor) PublishMessage(messageName, correlationKey 
 		ctx := context.Background()
 		ttl := 300 * time.Second // Default TTL 5 minutes
 
-		result, err := messageComp.PublishMessage(ctx, "", messageName, correlationKey, variables, &ttl)
+		result, err := messageComp.PublishMessageWithElementID(ctx, "", messageName, correlationKey, elementID, variables, &ttl)
 		if err != nil {
 			logger.Error("Failed to publish message",
 				logger.String("error", err.Error()),
 				logger.String("message_name", messageName),
-				logger.String("correlation_key", correlationKey))
+				logger.String("correlation_key", correlationKey),
+				logger.String("element_id", elementID))
 			return nil, fmt.Errorf("failed to publish message: %w", err)
 		}
 
 		logger.Info("Message published successfully",
 			logger.String("message_name", messageName),
 			logger.String("correlation_key", correlationKey),
+			logger.String("element_id", elementID),
 			logger.Bool("instance_created", result.InstanceCreated))
 		return result, nil
 	}

@@ -88,12 +88,18 @@ func (bm *BufferManager) ListBufferedMessages(ctx context.Context, tenantID stri
 		start = len(messages)
 	}
 
-	end := start + limit
-	if end > len(messages) {
-		end = len(messages)
+	var result []*models.BufferedMessage
+	if limit > 0 {
+		// Apply limit
+		end := start + limit
+		if end > len(messages) {
+			end = len(messages)
+		}
+		result = messages[start:end]
+	} else {
+		// No limit, return all from offset
+		result = messages[start:]
 	}
-
-	result := messages[start:end]
 	bm.logger.Debug("Listed buffered messages", logger.Int("returned", len(result)))
 
 	return result, nil
@@ -183,7 +189,7 @@ func (bm *BufferManager) ProcessBufferedMessages(ctx context.Context, subscripti
 		// For intermediate catch events, trigger message correlation through correlation manager
 		// Для intermediate catch events запускаем корреляцию сообщений через correlation manager
 		if bm.correlationMgr != nil {
-			correlationResult, err := bm.correlationMgr.PublishMessage(ctx, message.TenantID, message.Name, message.CorrelationKey, message.Variables, nil)
+			correlationResult, err := bm.correlationMgr.PublishMessage(ctx, message.TenantID, message.Name, message.CorrelationKey, message.ElementID, message.Variables, nil)
 			if err != nil {
 				bm.logger.Error("Failed to correlate buffered message",
 					logger.String("message_id", message.ID),

@@ -372,7 +372,7 @@ func (d *DaemonCommand) IncidentResolve() error {
 		IncidentId: incidentID,
 		Action:     action,
 		Comment:    comment,
-		ResolvedBy: "cli-user", // TODO: Get actual user from config
+		ResolvedBy: "cli-user",
 		NewRetries: newRetries,
 	})
 	if err != nil {

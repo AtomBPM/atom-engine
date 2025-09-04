@@ -637,14 +637,5 @@ func (h *IncidentsHandler) getRequestID(c *gin.Context) string {
 	if requestID := c.GetHeader("X-Request-ID"); requestID != "" {
 		return requestID
 	}
-	return "incidents_" + h.generateRandomString(8)
-}
-
-func (h *IncidentsHandler) generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
-	}
-	return string(result)
+	return utils.GenerateSecureRequestID("incidents")
 }

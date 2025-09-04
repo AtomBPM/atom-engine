@@ -94,12 +94,8 @@ func (h *JobsHandler) RegisterRoutes(router *gin.RouterGroup, authMiddleware *mi
 		jobs.GET("/:key", h.GetJob)
 		jobs.POST("/activate", h.ActivateJobs)
 		jobs.PUT("/:key/complete", h.CompleteJob)
-		jobs.PUT("/:key/fail", h.FailJob)
-		jobs.PUT("/:key/throw-error", h.ThrowError)
-		jobs.DELETE("/:key", h.CancelJob)
-		jobs.PUT("/:key/retries", h.UpdateRetries)
-		jobs.PUT("/:key/timeout", h.UpdateTimeout)
-		jobs.GET("/stats", h.GetStats)
+		// Note: Additional job endpoints are available through gRPC interface
+		// For job failure, cancellation, retries, and stats use: atomd job <command>
 	}
 }
 
@@ -528,65 +524,6 @@ func (h *JobsHandler) CompleteJob(c *gin.Context) {
 	c.JSON(http.StatusOK, models.SuccessResponse(updateResp, requestID))
 }
 
-// FailJob handles PUT /api/v1/jobs/:key/fail
-func (h *JobsHandler) FailJob(c *gin.Context) {
-	requestID := h.getRequestID(c)
-	_ = c.Param("key") // jobKey for implementation
-
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Fail job endpoint not implemented yet"),
-		requestID))
-}
-
-// ThrowError handles PUT /api/v1/jobs/:key/throw-error
-func (h *JobsHandler) ThrowError(c *gin.Context) {
-	requestID := h.getRequestID(c)
-	_ = c.Param("key") // jobKey for implementation
-
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Throw error endpoint not implemented yet"),
-		requestID))
-}
-
-// CancelJob handles DELETE /api/v1/jobs/:key
-func (h *JobsHandler) CancelJob(c *gin.Context) {
-	requestID := h.getRequestID(c)
-	_ = c.Param("key") // jobKey for implementation
-
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Cancel job endpoint not implemented yet"),
-		requestID))
-}
-
-// UpdateRetries handles PUT /api/v1/jobs/:key/retries
-func (h *JobsHandler) UpdateRetries(c *gin.Context) {
-	requestID := h.getRequestID(c)
-	_ = c.Param("key") // jobKey for implementation
-
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Update retries endpoint not implemented yet"),
-		requestID))
-}
-
-// UpdateTimeout handles PUT /api/v1/jobs/:key/timeout
-func (h *JobsHandler) UpdateTimeout(c *gin.Context) {
-	requestID := h.getRequestID(c)
-	_ = c.Param("key") // jobKey for implementation
-
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Update timeout endpoint not implemented yet"),
-		requestID))
-}
-
-// GetStats handles GET /api/v1/jobs/stats
-func (h *JobsHandler) GetStats(c *gin.Context) {
-	requestID := h.getRequestID(c)
-
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Get job stats endpoint not implemented yet"),
-		requestID))
-}
-
 // Helper methods
 
 func (h *JobsHandler) sendJobsRequest(req map[string]interface{}, requestID string) (map[string]interface{}, error) {
@@ -635,14 +572,5 @@ func (h *JobsHandler) getRequestID(c *gin.Context) string {
 	if requestID := c.GetHeader("X-Request-ID"); requestID != "" {
 		return requestID
 	}
-	return "jobs_" + h.generateRandomString(8)
-}
-
-func (h *JobsHandler) generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
-	}
-	return string(result)
+	return utils.GenerateSecureRequestID("jobs")
 }

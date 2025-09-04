@@ -18,6 +18,7 @@ import (
 	"atom-engine/src/core/auth"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/restapi/models"
+	"atom-engine/src/core/restapi/utils"
 )
 
 // AuthMiddleware provides HTTP authentication middleware
@@ -253,17 +254,7 @@ func getRequestID(c *gin.Context) string {
 // generateRequestID generates a simple request ID
 func generateRequestID() string {
 	// Simple implementation - in production you might want to use UUID
-	return "req_" + strings.ToLower(generateRandomString(8))
-}
-
-// generateRandomString generates random string of given length
-func generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
-	}
-	return string(result)
+	return utils.GenerateSecureRequestID("req")
 }
 
 // AuthContextKey is the context key for auth result

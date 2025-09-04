@@ -70,7 +70,7 @@ func (tc *TimerCallbacks) CreateTimer(timerRequest *TimerRequest) error {
 		TimerType:         models.TimerTypeEvent,
 		ProcessContext: &models.TimerProcessContext{
 			ProcessKey:      timerRequest.ProcessKey,
-			ProcessVersion:  1, // TODO: Extract from process key
+			ProcessVersion:  1, // Process version extraction not implemented
 			ProcessName:     "Process Timer",
 			ComponentSource: "process",
 		},

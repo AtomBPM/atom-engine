@@ -252,10 +252,9 @@ func (ep *ExecutionProcessor) checkProcessCompletion(instanceID string) error {
 func (ep *ExecutionProcessor) handleCallActivityCompletion(childInstanceID string) error {
 	// Find all tokens waiting for this child process completion
 	waitingFor := fmt.Sprintf("call_activity:%s", childInstanceID)
-	
+
 	// Search through all tokens to find ones waiting for this child process
-	// Note: This is not optimal, but for now we don't have an index for waiting tokens
-	// TODO: Add waiting tokens index for better performance
+	// Note: This is not optimal, waiting tokens index not implemented for better performance
 	allTokens, err := ep.storage.LoadAllTokens()
 	if err != nil {
 		return fmt.Errorf("failed to load all tokens: %w", err)

@@ -85,9 +85,8 @@ func (h *ParserHandler) RegisterRoutes(router *gin.RouterGroup, authMiddleware *
 		bpmn.POST("/parse", h.ParseBPMN)
 		bpmn.GET("/processes", h.ListProcesses)
 		bpmn.GET("/processes/:key", h.GetProcess)
-		bpmn.DELETE("/processes/:id", h.DeleteProcess)
-		bpmn.GET("/processes/:key/json", h.GetProcessJSON)
-		bpmn.GET("/stats", h.GetStats)
+		// Note: Additional BPMN endpoints are available through CLI interface
+		// For process details, deletion, JSON export, and stats use: atomd bpmn <command>
 	}
 }
 
@@ -354,41 +353,9 @@ func (h *ParserHandler) GetProcess(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("process_key", processKey))
 
-	// Implementation details...
+	// BPMN process information is available through CLI: atomd bpmn show <process_key>
 	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Get process endpoint not implemented yet"),
-		requestID))
-}
-
-// DeleteProcess handles DELETE /api/v1/bpmn/processes/:id
-func (h *ParserHandler) DeleteProcess(c *gin.Context) {
-	requestID := h.getRequestID(c)
-	_ = c.Param("id") // processID for future implementation
-
-	// Implementation details...
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Delete process endpoint not implemented yet"),
-		requestID))
-}
-
-// GetProcessJSON handles GET /api/v1/bpmn/processes/:key/json
-func (h *ParserHandler) GetProcessJSON(c *gin.Context) {
-	requestID := h.getRequestID(c)
-	_ = c.Param("key") // processKey for future implementation
-
-	// Implementation details...
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Get process JSON endpoint not implemented yet"),
-		requestID))
-}
-
-// GetStats handles GET /api/v1/bpmn/stats
-func (h *ParserHandler) GetStats(c *gin.Context) {
-	requestID := h.getRequestID(c)
-
-	// Implementation details...
-	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Get BPMN stats endpoint not implemented yet"),
+		models.NewAPIError("NOT_IMPLEMENTED", "Use CLI: atomd bpmn show <process_key>"),
 		requestID))
 }
 
@@ -448,14 +415,5 @@ func (h *ParserHandler) getRequestID(c *gin.Context) string {
 	if requestID := c.GetHeader("X-Request-ID"); requestID != "" {
 		return requestID
 	}
-	return "parser_" + h.generateRandomString(8)
-}
-
-func (h *ParserHandler) generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
-	}
-	return string(result)
+	return utils.GenerateSecureRequestID("parser")
 }

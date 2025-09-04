@@ -184,7 +184,7 @@ func (ee *EndEventExecutor) handleMessageEndEvent(token *models.Token, element m
 	// Publish message through process component before completing
 	// Публикуем сообщение через process component перед завершением
 	if ee.processComponent != nil && messageName != "" {
-		result, err := ee.processComponent.PublishMessage(messageName, correlationKey, token.Variables)
+		result, err := ee.processComponent.PublishMessageWithElementID(messageName, correlationKey, token.CurrentElementID, token.Variables)
 		if err != nil {
 			logger.Error("Failed to publish message from end event",
 				logger.String("token_id", token.TokenID),
@@ -219,8 +219,8 @@ func (ee *EndEventExecutor) handleSignalEndEvent(token *models.Token, element ma
 		logger.String("token_id", token.TokenID),
 		logger.String("element_id", token.CurrentElementID))
 
-	// TODO: Implement signal broadcasting
-	// ТОДО: Реализовать broadcasting сигнала
+	// Signal broadcasting not implemented
+	// Broadcasting сигнала не реализован
 	logger.Info("Signal end event - broadcasting not yet implemented")
 
 	return &ExecutionResult{
@@ -238,7 +238,7 @@ func (ee *EndEventExecutor) handleErrorEndEvent(token *models.Token, element map
 		logger.String("token_id", token.TokenID),
 		logger.String("element_id", token.CurrentElementID))
 
-	// TODO: Implement error propagation
+	// Error propagation not implemented
 	// ТОДО: Реализовать распространение ошибки
 	logger.Info("Error end event - error propagation not yet implemented")
 

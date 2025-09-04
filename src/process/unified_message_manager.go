@@ -99,6 +99,13 @@ func (umm *UnifiedMessageManager) PublishMessage(messageName, correlationKey str
 	return umm.processor.PublishMessage(messageName, correlationKey, variables)
 }
 
+func (umm *UnifiedMessageManager) PublishMessageWithElementID(messageName, correlationKey, elementID string, variables map[string]interface{}) (*models.MessageCorrelationResult, error) {
+	if umm.processor == nil {
+		umm.processor = NewBufferedMessageProcessor(umm.storage, umm.core)
+	}
+	return umm.processor.PublishMessageWithElementID(messageName, correlationKey, elementID, variables)
+}
+
 // CorrelateMessage correlates message
 // Коррелирует сообщение
 func (umm *UnifiedMessageManager) CorrelateMessage(messageName, correlationKey, processInstanceID string, variables map[string]interface{}) (*models.MessageCorrelationResult, error) {

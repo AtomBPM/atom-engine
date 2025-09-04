@@ -456,9 +456,9 @@ func (h *TimerHandler) DeleteTimer(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("timer_id", timerID))
 
-	// Implementation details for timer deletion...
+	// Timer deletion is available through CLI: atomd timer remove <timer_id>
 	c.JSON(http.StatusNotImplemented, models.ErrorResponse(
-		models.NewAPIError("NOT_IMPLEMENTED", "Delete timer endpoint not implemented yet"),
+		models.NewAPIError("NOT_IMPLEMENTED", "Use CLI: atomd timer remove <timer_id>"),
 		requestID))
 }
 
@@ -506,14 +506,5 @@ func (h *TimerHandler) getRequestID(c *gin.Context) string {
 	if requestID := c.GetHeader("X-Request-ID"); requestID != "" {
 		return requestID
 	}
-	return "timer_" + h.generateRandomString(8)
-}
-
-func (h *TimerHandler) generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
-	}
-	return string(result)
+	return utils.GenerateSecureRequestID("timer")
 }

@@ -254,8 +254,6 @@ func printJobsTable(jobs []*jobspb.JobInfo, totalCount int32) {
 		return jobs[i].CreatedAt > jobs[j].CreatedAt
 	})
 
-	fmt.Printf("Found %d job(s):\n\n", totalCount)
-
 	// Table headers
 	fmt.Printf("%-25s %-15s %-15s %-8s %-12s %-25s %-20s %-20s\n",
 		"JOB KEY", "TYPE", "WORKER", "RETRIES", "STATUS", "PROCESS INSTANCE", "ELEMENT ID", "CREATED")
@@ -379,16 +377,15 @@ func printMessagesTable(messages []*messagespb.BufferedMessage, totalCount int32
 		return messages[i].PublishedAt > messages[j].PublishedAt
 	})
 
-	fmt.Printf("Found %d buffered message(s):\n\n", totalCount)
-
 	// Table headers
-	fmt.Printf("%-25s %-20s %-20s %-15s %-20s %-20s %-30s\n",
-		"MESSAGE ID", "NAME", "CORRELATION KEY", "TENANT ID", "PUBLISHED", "EXPIRES", "REASON")
-	fmt.Printf("%-25s %-20s %-20s %-15s %-20s %-20s %-30s\n",
+	fmt.Printf("%-25s %-20s %-20s %-15s %-20s %-20s %-20s %-30s\n",
+		"MESSAGE ID", "NAME", "CORRELATION KEY", "TENANT ID", "PUBLISHED", "EXPIRES", "ELEMENT ID", "REASON")
+	fmt.Printf("%-25s %-20s %-20s %-15s %-20s %-20s %-20s %-30s\n",
 		strings.Repeat("-", 25),
 		strings.Repeat("-", 20),
 		strings.Repeat("-", 20),
 		strings.Repeat("-", 15),
+		strings.Repeat("-", 20),
 		strings.Repeat("-", 20),
 		strings.Repeat("-", 20),
 		strings.Repeat("-", 30))
@@ -398,13 +395,13 @@ func printMessagesTable(messages []*messagespb.BufferedMessage, totalCount int32
 		// Format times
 		var publishedTime, expiresTime string
 		if msg.PublishedAt > 0 {
-			publishedTime = time.Unix(msg.PublishedAt/1000, 0).Format("2006-01-02 15:04:05")
+			publishedTime = time.Unix(msg.PublishedAt, 0).Format("2006-01-02 15:04:05")
 		} else {
 			publishedTime = "N/A"
 		}
 
 		if msg.ExpiresAt > 0 {
-			expiresTime = time.Unix(msg.ExpiresAt/1000, 0).Format("2006-01-02 15:04:05")
+			expiresTime = time.Unix(msg.ExpiresAt, 0).Format("2006-01-02 15:04:05")
 		} else {
 			expiresTime = "Never"
 		}
@@ -425,13 +422,19 @@ func printMessagesTable(messages []*messagespb.BufferedMessage, totalCount int32
 			reason = "<no reason>"
 		}
 
-		fmt.Printf("%-25s %-20s %-20s %-15s %-20s %-20s %-30s\n",
+		elementID := msg.ElementId
+		if elementID == "" {
+			elementID = "<none>"
+		}
+
+		fmt.Printf("%-25s %-20s %-20s %-15s %-20s %-20s %-20s %-30s\n",
 			msg.Id,
 			msg.Name,
 			correlationKey,
 			tenantID,
 			publishedTime,
 			expiresTime,
+			elementID,
 			reason)
 	}
 

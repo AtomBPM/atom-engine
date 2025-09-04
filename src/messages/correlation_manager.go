@@ -60,8 +60,8 @@ func (cm *CorrelationManager) Stop() {
 }
 
 // PublishMessage publishes a message for correlation
-func (cm *CorrelationManager) PublishMessage(ctx context.Context, tenantID, messageName, correlationKey string, variables map[string]interface{}, ttl *time.Duration) (*models.MessageCorrelationResult, error) {
-	cm.logger.Info("Publishing message for correlation", logger.String("messageName", messageName), logger.String("correlationKey", correlationKey))
+func (cm *CorrelationManager) PublishMessage(ctx context.Context, tenantID, messageName, correlationKey, elementID string, variables map[string]interface{}, ttl *time.Duration) (*models.MessageCorrelationResult, error) {
+	cm.logger.Info("Publishing message for correlation", logger.String("messageName", messageName), logger.String("correlationKey", correlationKey), logger.String("elementID", elementID))
 
 	// Create message ID
 	messageID := models.GenerateID()
@@ -214,6 +214,7 @@ func (cm *CorrelationManager) PublishMessage(ctx context.Context, tenantID, mess
 			PublishedAt:    time.Now(),
 			BufferedAt:     time.Now(),
 			Reason:         "No active subscription found",
+			ElementID:      elementID,
 		}
 
 		if ttl != nil {
@@ -236,6 +237,7 @@ func (cm *CorrelationManager) PublishMessage(ctx context.Context, tenantID, mess
 
 	return result, nil
 }
+
 
 // CorrelateMessage correlates message with specific process instance
 func (cm *CorrelationManager) CorrelateMessage(ctx context.Context, tenantID, messageName, correlationKey, processInstanceID string, variables map[string]interface{}) (*models.MessageCorrelationResult, error) {

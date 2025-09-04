@@ -66,6 +66,7 @@ message BufferedMessage {
   int64 buffered_at = 7;
   int64 expires_at = 8;
   string reason = 9;
+  string element_id = 10;
 }
 
 message ListBufferedMessagesResponse {

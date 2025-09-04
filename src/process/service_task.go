@@ -650,7 +650,7 @@ func (ste *ServiceTaskExecutor) createErrorBoundaryForEvent(token *models.Token,
 			TokenID:        token.TokenID,
 			ElementID:      eventID,
 			AttachedToRef:  token.CurrentElementID,
-			ErrorRef:       "", // TODO: Extract from eventDefMap if needed
+			ErrorRef:       "", // ErrorRef extraction not implemented
 			ErrorCode:      errorCode,
 			ErrorName:      errorName,
 			CancelActivity: cancelActivity,
@@ -785,7 +785,7 @@ func (ste *ServiceTaskExecutor) evaluateTimerExpression(expression string, token
 	type ExpressionEvaluator interface {
 		EvaluateExpressionEngine(expression interface{}, variables map[string]interface{}) (interface{}, error)
 	}
-	
+
 	expressionComp, ok := expressionCompInterface.(ExpressionEvaluator)
 	if !ok {
 		return nil, fmt.Errorf("failed to cast expression component to ExpressionEvaluator interface")

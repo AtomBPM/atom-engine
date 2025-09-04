@@ -197,19 +197,21 @@ func (itee *IntermediateThrowEventExecutor) handleMessageThrowEvent(token *model
 		}
 	}
 
-	// Publish message through process component
-	// Публикуем сообщение через process component
+	// Publish message through process component  
+	// Публикуем сообщение через process component с element ID
 	if itee.processComponent != nil && messageName != "" {
-		result, err := itee.processComponent.PublishMessage(messageName, correlationKey, token.Variables)
+		result, err := itee.processComponent.PublishMessageWithElementID(messageName, correlationKey, token.CurrentElementID, token.Variables)
 		if err != nil {
 			logger.Error("Failed to publish message from throw event",
 				logger.String("token_id", token.TokenID),
 				logger.String("message_name", messageName),
+				logger.String("element_id", token.CurrentElementID),
 				logger.String("error", err.Error()))
 		} else {
 			logger.Info("Message published from throw event",
 				logger.String("message_name", messageName),
 				logger.String("correlation_key", correlationKey),
+				logger.String("element_id", token.CurrentElementID),
 				logger.Bool("instance_created", result != nil && result.InstanceCreated))
 		}
 	}
@@ -258,8 +260,8 @@ func (itee *IntermediateThrowEventExecutor) handleSignalThrowEvent(token *models
 		logger.String("token_id", token.TokenID),
 		logger.String("element_id", token.CurrentElementID))
 
-	// TODO: Implement signal broadcasting
-	// ТОДО: Реализовать broadcasting сигнала
+	// Signal broadcasting not implemented
+	// Broadcasting сигнала не реализован
 	logger.Info("Signal throw event - broadcasting not yet implemented")
 
 	// Continue with regular flow

@@ -26,14 +26,14 @@ func (d *DaemonCommand) TokenList() error {
 
 	// Parse arguments for filtering and pagination
 	var instanceID, state string
-	var pageSize, page int32 = 20, 1  // Default values
+	var pageSize, page int32 = 20, 1 // Default values
 
 	args := os.Args[3:] // Skip "atomd token list"
-	
+
 	// Parse arguments: handle flags and positional arguments
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		
+
 		if arg == "--page" || arg == "-p" {
 			if i+1 < len(args) {
 				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
@@ -100,10 +100,10 @@ func (d *DaemonCommand) TokenList() error {
 
 	fmt.Printf("Token List\n")
 	fmt.Printf("==========\n")
-	
+
 	// Display pagination information
 	if response.TotalPages > 1 {
-		fmt.Printf("Page %d of %d (Total: %d tokens, Showing: %d)\n\n", 
+		fmt.Printf("Page %d of %d (Total: %d tokens, Showing: %d)\n\n",
 			response.Page, response.TotalPages, response.TotalCount, len(response.Tokens))
 	} else {
 		fmt.Printf("Found %d token(s):\n\n", response.TotalCount)
@@ -186,9 +186,54 @@ func (d *DaemonCommand) TokenShow() error {
 	tokenID := os.Args[3]
 	logger.Debug("Token show request", logger.String("token_id", tokenID))
 
-	fmt.Printf("Token Details:\n")
-	fmt.Printf("Token ID: %s\n", tokenID)
-	fmt.Printf("Note: Token details functionality needs to be implemented\n")
+	conn, err := d.grpcClient.Connect()
+	if err != nil {
+		logger.Error("Failed to connect for token show", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to connect to daemon: %w", err)
+	}
+	defer conn.Close()
+
+	// Create process gRPC client
+	client := processpb.NewProcessServiceClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Make gRPC request
+	request := &processpb.GetTokenStatusRequest{
+		TokenId: tokenID,
+	}
+
+	response, err := client.GetTokenStatus(ctx, request)
+	if err != nil {
+		logger.Error("Get token status failed", logger.String("error", err.Error()))
+		return fmt.Errorf("get token status failed: %w", err)
+	}
+
+	if !response.Success {
+		fmt.Printf("Error: %s\n", response.Message)
+		return nil
+	}
+
+	token := response.Token
+
+	fmt.Printf("Token Details\n")
+	fmt.Printf("=============\n")
+	fmt.Printf("Token ID:             %s\n", token.TokenId)
+	fmt.Printf("Process Instance ID:  %s\n", token.ProcessInstanceId)
+	fmt.Printf("Process Key:          %s\n", token.ProcessKey)
+	fmt.Printf("Current Element ID:   %s\n", token.CurrentElementId)
+	fmt.Printf("State:                %s\n", colorizeStatus(token.State))
+	fmt.Printf("Waiting For:          %s\n", token.WaitingFor)
+	fmt.Printf("Created At:           %s\n", time.Unix(token.CreatedAt, 0).Format("2006-01-02 15:04:05"))
+	fmt.Printf("Updated At:           %s\n", time.Unix(token.UpdatedAt, 0).Format("2006-01-02 15:04:05"))
+
+	if len(token.Variables) > 0 {
+		fmt.Printf("\nVariables:\n")
+		for key, value := range token.Variables {
+			fmt.Printf("  %s: %s\n", key, value)
+		}
+	}
 
 	return nil
 }
@@ -206,9 +251,90 @@ func (d *DaemonCommand) TokenTrace() error {
 	instanceID := os.Args[3]
 	logger.Debug("Token trace request", logger.String("instance_id", instanceID))
 
-	fmt.Printf("Token Trace:\n")
+	conn, err := d.grpcClient.Connect()
+	if err != nil {
+		logger.Error("Failed to connect for token trace", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to connect to daemon: %w", err)
+	}
+	defer conn.Close()
+
+	// Create process gRPC client
+	client := processpb.NewProcessServiceClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Make gRPC request to list tokens for this process instance
+	request := &processpb.ListTokensRequest{
+		InstanceIdFilter: instanceID,
+		StateFilter:      "",  // Get all tokens regardless of state
+		PageSize:         100, // Get more tokens for tracing
+		Page:             1,
+		SortBy:           "created_at",
+		SortOrder:        "ASC", // Sort by creation time ascending
+	}
+
+	response, err := client.ListTokens(ctx, request)
+	if err != nil {
+		logger.Error("List tokens failed", logger.String("error", err.Error()))
+		return fmt.Errorf("list tokens failed: %w", err)
+	}
+
+	if !response.Success {
+		fmt.Printf("Error: %s\n", response.Message)
+		return nil
+	}
+
+	fmt.Printf("Token Trace\n")
+	fmt.Printf("===========\n")
 	fmt.Printf("Process Instance: %s\n", instanceID)
-	fmt.Printf("Note: Token tracing functionality needs to be implemented\n")
+	fmt.Printf("Total Tokens: %d\n\n", response.TotalCount)
+
+	if len(response.Tokens) == 0 {
+		fmt.Printf("No tokens found for process instance\n")
+		return nil
+	}
+
+	fmt.Printf("Execution Trace (chronological order):\n")
+	fmt.Printf("======================================\n")
+
+	for i, token := range response.Tokens {
+		fmt.Printf("%d. Token %s\n", i+1, token.TokenId)
+		fmt.Printf("   Element:    %s\n", token.CurrentElementId)
+		fmt.Printf("   State:      %s\n", colorizeStatus(token.State))
+		fmt.Printf("   Created:    %s\n", time.Unix(token.CreatedAt, 0).Format("2006-01-02 15:04:05"))
+		if token.UpdatedAt != token.CreatedAt {
+			fmt.Printf("   Updated:    %s\n", time.Unix(token.UpdatedAt, 0).Format("2006-01-02 15:04:05"))
+		}
+		if token.WaitingFor != "" {
+			fmt.Printf("   Waiting:    %s\n", token.WaitingFor)
+		}
+		fmt.Printf("\n")
+	}
+
+	// Show flow summary
+	fmt.Printf("Flow Summary:\n")
+	fmt.Printf("=============\n")
+	elements := make([]string, 0)
+	for _, token := range response.Tokens {
+		if token.CurrentElementId != "" {
+			// Avoid duplicates in summary
+			found := false
+			for _, elem := range elements {
+				if elem == token.CurrentElementId {
+					found = true
+					break
+				}
+			}
+			if !found {
+				elements = append(elements, token.CurrentElementId)
+			}
+		}
+	}
+
+	if len(elements) > 0 {
+		fmt.Printf("Elements visited: %s\n", strings.Join(elements, " → "))
+	}
 
 	return nil
 }

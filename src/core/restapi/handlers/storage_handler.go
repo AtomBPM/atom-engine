@@ -171,18 +171,10 @@ func (h *StorageHandler) getRequestID(c *gin.Context) string {
 
 // generateRequestID generates a simple request ID
 func (h *StorageHandler) generateRequestID() string {
-	return "storage_" + h.generateRandomString(8)
+	return utils.GenerateSecureRequestID("storage")
 }
 
 // generateRandomString generates random string of given length
-func (h *StorageHandler) generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
-	}
-	return string(result)
-}
 
 // GetHealthStatus provides storage health information for health checks
 func (h *StorageHandler) GetHealthStatus() map[string]interface{} {

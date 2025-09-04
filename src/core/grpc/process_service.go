@@ -159,26 +159,6 @@ func (s *processServiceServer) CancelProcessInstance(ctx context.Context, req *p
 	}, nil
 }
 
-// DeployProcess deploys BPMN process (placeholder implementation)
-// Разворачивает BPMN процесс (заглушка)
-func (s *processServiceServer) DeployProcess(ctx context.Context, req *processpb.DeployProcessRequest) (*processpb.DeployProcessResponse, error) {
-	logger.Info("DeployProcess request",
-		logger.String("process_name", req.ProcessName))
-
-	// This is a placeholder - in real implementation, this would:
-	// 1. Parse BPMN content
-	// 2. Validate process
-	// 3. Store process definition
-	// 4. Return deployment information
-
-	return &processpb.DeployProcessResponse{
-		ProcessId: "placeholder_process_id",
-		Version:   req.Version,
-		Success:   true,
-		Message:   "process deployment not implemented yet",
-	}, nil
-}
-
 // ListProcessInstances lists process instances
 // Получает список экземпляров процессов
 func (s *processServiceServer) ListProcessInstances(ctx context.Context, req *processpb.ListProcessInstancesRequest) (*processpb.ListProcessInstancesResponse, error) {

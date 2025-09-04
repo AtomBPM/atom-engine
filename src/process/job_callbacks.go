@@ -213,8 +213,7 @@ func (jc *JobCallbacks) activateErrorBoundaryFlow(originalToken *models.Token, e
 		// Use execution processor to continue with next elements
 		if jc.component != nil {
 			// Get the engine from component to access execution processor
-			// For now, use the callback helper to continue execution
-			// TODO: This might need refinement based on actual engine architecture
+			// Use the callback helper to continue execution
 			return jc.callbackHelper.ProcessCallbackAndContinue(originalToken, errorBoundary.ElementID, variables)
 		}
 	}
