@@ -260,19 +260,19 @@ func (s *processServiceServer) ListTokens(ctx context.Context, req *processpb.Li
 	var tokens []*models.Token
 	var err error
 
-	if req.InstanceIdFilter != "" {
-		// Filter by process instance
-		tokens, err = processComp.GetActiveTokens(req.InstanceIdFilter)
-	} else {
-		// Get all tokens via storage component
-		storageComp := s.core.GetStorageComponent()
-		if storageComp == nil {
-			return &processpb.ListTokensResponse{
-				Success: false,
-				Message: "storage component not available",
-			}, nil
-		}
+	// Get storage component for token loading
+	storageComp := s.core.GetStorageComponent()
+	if storageComp == nil {
+		return &processpb.ListTokensResponse{
+			Success: false,
+			Message: "storage component not available",
+		}, nil
+	}
 
+	if req.InstanceIdFilter != "" {
+		// Filter by process instance - load ALL tokens for this instance (including FAILED)
+		tokens, err = processComp.GetTokensByProcessInstance(req.InstanceIdFilter)
+	} else {
 		if req.StateFilter != "" {
 			// Filter by state
 			var state models.TokenState
@@ -283,6 +283,10 @@ func (s *processServiceServer) ListTokens(ctx context.Context, req *processpb.Li
 				state = models.TokenStateCompleted
 			case "CANCELLED":
 				state = models.TokenStateCanceled
+			case "FAILED":
+				state = models.TokenStateFailed
+			case "WAITING":
+				state = models.TokenStateWaiting
 			default:
 				return &processpb.ListTokensResponse{
 					Success: false,
@@ -294,6 +298,17 @@ func (s *processServiceServer) ListTokens(ctx context.Context, req *processpb.Li
 			// Load all tokens
 			tokens, err = storageComp.LoadAllTokens()
 		}
+	}
+
+	// Apply additional state filter if both instance and state filters are provided
+	if req.InstanceIdFilter != "" && req.StateFilter != "" {
+		var filteredTokens []*models.Token
+		for _, token := range tokens {
+			if string(token.State) == req.StateFilter {
+				filteredTokens = append(filteredTokens, token)
+			}
+		}
+		tokens = filteredTokens
 	}
 
 	if err != nil {

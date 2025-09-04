@@ -199,17 +199,13 @@ func (c *Core) Start() error {
 	// Запускаем обработчик ответов timewheel
 	go c.processTimewheelResponses()
 
-	// Start jobs response processor - DISABLED for REST API compatibility
-	// Запускаем обработчик ответов jobs - ОТКЛЮЧЕН для совместимости с REST API
-	// go c.processJobsResponses()
+	// Start jobs response processor
+	// Запускаем обработчик ответов jobs
+	go c.processJobsResponses()
 
-	// Start incidents response processor - DISABLED for gRPC direct response waiting
-	// Запускаем обработчик ответов incidents - ОТКЛЮЧЕН для прямого ожидания gRPC ответов
-	// go c.processIncidentsResponses()
-
-	// Start messages response processor - TEMPORARILY DISABLED for gRPC response testing
-	// Запускаем обработчик ответов messages - ВРЕМЕННО ОТКЛЮЧЕН для тестирования gRPC ответов
-	// go c.processMessagesResponses()
+	// Start messages response processor
+	// Запускаем обработчик ответов messages
+	go c.processMessagesResponses()
 
 	c.running = true
 	logger.Info("Atom Engine started successfully")

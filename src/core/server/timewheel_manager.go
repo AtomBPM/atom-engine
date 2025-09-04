@@ -44,19 +44,39 @@ func (c *Core) GetTimewheelStats() (*timewheelpb.GetTimeWheelStatsResponse, erro
 		}, nil
 	}
 
-	stats, err := c.timewheelComp.GetStats()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get timewheel stats: %w", err)
+	// Calculate real statistics from storage
+	// Вычисляем реальную статистику из storage
+	var totalTimers, pendingTimers, firedTimers, cancelledTimers int32
+	timerTypes := make(map[string]int32)
+
+	if c.storage != nil {
+		timers, err := c.storage.LoadAllTimers()
+		if err != nil {
+			logger.Error("Failed to load timers for stats", logger.String("error", err.Error()))
+		} else {
+			totalTimers = int32(len(timers))
+			for _, timer := range timers {
+				switch timer.State {
+				case "SCHEDULED", "ACTIVE":
+					pendingTimers++
+				case "FIRED":
+					firedTimers++
+				case "CANCELLED":
+					cancelledTimers++
+				}
+				timerTypes[timer.TimerType]++
+			}
+		}
 	}
 
 	return &timewheelpb.GetTimeWheelStatsResponse{
-		TotalTimers:     int32(stats.TotalTimers),
-		PendingTimers:   int32(stats.TotalTimers), // Assuming all are pending
-		FiredTimers:     0,
-		CancelledTimers: 0,
+		TotalTimers:     totalTimers,
+		PendingTimers:   pendingTimers,
+		FiredTimers:     firedTimers,
+		CancelledTimers: cancelledTimers,
 		CurrentTick:     time.Now().Unix(),
 		SlotsCount:      60, // Default first level slots
-		TimerTypes:      make(map[string]int32),
+		TimerTypes:      timerTypes,
 	}, nil
 }
 

@@ -321,13 +321,31 @@ func (c *Component) ThrowError(jobKey string, errorCode, errorMessage string) er
 func (c *Component) GetJobStats() (interface{}, error) {
 	c.logger.Debug("Getting job stats")
 
-	// For now return empty stats - would need implementation in JobManager
+	// Calculate real statistics using ListJobs
+	allJobs, totalJobs, err := c.ListJobs("", "", "", "", 10000, 0) // Get all jobs
+	if err != nil {
+		c.logger.Error("Failed to get jobs for stats", logger.String("error", err.Error()))
+		return &JobStats{TotalJobs: 0, ActiveJobs: 0, CompletedJobs: 0, FailedJobs: 0}, nil
+	}
+
+	var activeJobs, completedJobs, failedJobs int32
+	for _, job := range allJobs {
+		switch job.Status {
+		case "PENDING", "RUNNING":
+			activeJobs++
+		case "COMPLETED":
+			completedJobs++
+		case "FAILED":
+			failedJobs++
+		}
+	}
+
 	return &JobStats{
-		TotalJobs:      0,
-		ActiveJobs:     0,
-		CompletedJobs:  0,
-		FailedJobs:     0,
-		ActivatedToday: 0,
+		TotalJobs:      int32(totalJobs),
+		ActiveJobs:     activeJobs,
+		CompletedJobs:  completedJobs,
+		FailedJobs:     failedJobs,
+		ActivatedToday: 0, // TODO: Implement daily counts if needed
 		CompletedToday: 0,
 	}, nil
 }
@@ -719,15 +737,39 @@ func (c *Component) handleGetJob(ctx context.Context, request JobRequest) error 
 // handleGetStats handles get statistics request
 // Обрабатывает запрос получения статистики
 func (c *Component) handleGetStats(ctx context.Context, request JobRequest) error {
-	// Create basic job statistics
-	// Создаем базовую статистику job'ов
+	// Calculate real job statistics
+	// Вычисляем реальную статистику job'ов
+	allJobs, totalJobs, err := c.ListJobs("", "", "", "", 10000, 0) // Get all jobs
+	if err != nil {
+		c.logger.Error("Failed to get jobs for stats", logger.String("error", err.Error()))
+		stats := JobStatsResult{TotalJobs: 0, PendingJobs: 0, ActiveJobs: 0, CompletedJobs: 0, FailedJobs: 0, CanceledJobs: 0}
+		response := CreateJobResponse("get_stats_response", request.RequestID, stats)
+		return c.sendResponse(response)
+	}
+
+	var pendingJobs, activeJobs, completedJobs, failedJobs, canceledJobs int
+	for _, job := range allJobs {
+		switch job.Status {
+		case "PENDING":
+			pendingJobs++
+		case "RUNNING":
+			activeJobs++
+		case "COMPLETED":
+			completedJobs++
+		case "FAILED":
+			failedJobs++
+		case "CANCELED":
+			canceledJobs++
+		}
+	}
+
 	stats := JobStatsResult{
-		TotalJobs:     0, // TODO: Implement real statistics
-		PendingJobs:   0,
-		ActiveJobs:    0,
-		CompletedJobs: 0,
-		FailedJobs:    0,
-		CanceledJobs:  0,
+		TotalJobs:     totalJobs,
+		PendingJobs:   pendingJobs,
+		ActiveJobs:    activeJobs,
+		CompletedJobs: completedJobs,
+		FailedJobs:    failedJobs,
+		CanceledJobs:  canceledJobs,
 	}
 
 	response := CreateJobResponse("get_stats_response", request.RequestID, stats)
