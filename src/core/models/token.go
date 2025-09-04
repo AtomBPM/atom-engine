@@ -179,6 +179,9 @@ func (t *Token) MergeVariables(variables map[string]interface{}) {
 // SetExecutionContext sets execution context field
 // Устанавливает поле контекста выполнения
 func (t *Token) SetExecutionContext(key string, value interface{}) {
+	if t.ExecutionContext == nil {
+		t.ExecutionContext = make(map[string]interface{})
+	}
 	t.ExecutionContext[key] = value
 	t.UpdatedAt = time.Now()
 }
@@ -186,6 +189,9 @@ func (t *Token) SetExecutionContext(key string, value interface{}) {
 // GetExecutionContext gets execution context field
 // Получает поле контекста выполнения
 func (t *Token) GetExecutionContext(key string) (interface{}, bool) {
+	if t.ExecutionContext == nil {
+		return nil, false
+	}
 	value, exists := t.ExecutionContext[key]
 	return value, exists
 }

@@ -234,6 +234,87 @@ func (ep *ExecutionProcessor) checkProcessCompletion(instanceID string) error {
 		}
 
 		logger.Info("Process instance completed", logger.String("instance_id", instanceID))
+
+		// Check for call activity parent tokens waiting for this process
+		if err := ep.handleCallActivityCompletion(instanceID); err != nil {
+			logger.Error("Failed to handle call activity completion",
+				logger.String("instance_id", instanceID),
+				logger.String("error", err.Error()))
+			// Don't fail the process completion, log error and continue
+		}
+	}
+
+	return nil
+}
+
+// handleCallActivityCompletion handles completion of child process for call activity
+// Обрабатывает завершение дочернего процесса для call activity
+func (ep *ExecutionProcessor) handleCallActivityCompletion(childInstanceID string) error {
+	// Find all tokens waiting for this child process completion
+	waitingFor := fmt.Sprintf("call_activity:%s", childInstanceID)
+	
+	// Search through all tokens to find ones waiting for this child process
+	// Note: This is not optimal, but for now we don't have an index for waiting tokens
+	// TODO: Add waiting tokens index for better performance
+	allTokens, err := ep.storage.LoadAllTokens()
+	if err != nil {
+		return fmt.Errorf("failed to load all tokens: %w", err)
+	}
+
+	var parentTokens []*models.Token
+	for _, token := range allTokens {
+		if token.WaitingFor == waitingFor && token.State == models.TokenStateWaiting {
+			parentTokens = append(parentTokens, token)
+		}
+	}
+
+	logger.Info("Found parent tokens waiting for child process completion",
+		logger.String("child_instance_id", childInstanceID),
+		logger.String("waiting_for", waitingFor),
+		logger.Int("parent_tokens_count", len(parentTokens)))
+
+	// Get child process variables for propagation
+	childInstance, err := ep.storage.LoadProcessInstance(childInstanceID)
+	if err != nil {
+		logger.Warn("Failed to load child process instance for variable propagation",
+			logger.String("child_instance_id", childInstanceID),
+			logger.String("error", err.Error()))
+		// Continue without variable propagation
+		childInstance = nil
+	}
+
+	// Continue execution for each parent token
+	for _, parentToken := range parentTokens {
+		logger.Info("Continuing call activity parent token execution",
+			logger.String("parent_token_id", parentToken.TokenID),
+			logger.String("child_instance_id", childInstanceID))
+
+		// Merge child process variables if available
+		if childInstance != nil && childInstance.Variables != nil {
+			parentToken.MergeVariables(childInstance.Variables)
+			logger.Debug("Merged child process variables to parent token",
+				logger.String("parent_token_id", parentToken.TokenID),
+				logger.Int("variables_count", len(childInstance.Variables)))
+		}
+
+		// Clear waiting state
+		parentToken.ClearWaitingFor()
+
+		// Update token in storage
+		if err := ep.storage.UpdateToken(parentToken); err != nil {
+			logger.Error("Failed to update parent token",
+				logger.String("parent_token_id", parentToken.TokenID),
+				logger.String("error", err.Error()))
+			continue
+		}
+
+		// Continue token execution
+		if err := ep.component.ExecuteToken(parentToken); err != nil {
+			logger.Error("Failed to execute parent token",
+				logger.String("parent_token_id", parentToken.TokenID),
+				logger.String("error", err.Error()))
+			// Continue with other tokens
+		}
 	}
 
 	return nil
