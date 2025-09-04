@@ -10,6 +10,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -340,9 +341,29 @@ func (d *DaemonCommand) BPMNJson() error {
 		logger.String("process_key", processKey),
 		logger.Int("json_length", len(resp.JsonData)))
 
+	// Parse and format JSON for better readability
+	var jsonData interface{}
+	if err := json.Unmarshal([]byte(resp.JsonData), &jsonData); err != nil {
+		logger.Error("Failed to parse JSON data", logger.String("error", err.Error()))
+		fmt.Printf("BPMN Process JSON (raw)\n")
+		fmt.Printf("========================\n")
+		fmt.Printf("%s\n", resp.JsonData)
+		return nil
+	}
+
+	// Format JSON with indentation
+	formattedJSON, err := json.MarshalIndent(jsonData, "", "  ")
+	if err != nil {
+		logger.Error("Failed to format JSON data", logger.String("error", err.Error()))
+		fmt.Printf("BPMN Process JSON (raw)\n")
+		fmt.Printf("========================\n")
+		fmt.Printf("%s\n", resp.JsonData)
+		return nil
+	}
+
 	fmt.Printf("BPMN Process JSON\n")
 	fmt.Printf("================\n")
-	fmt.Printf("%s\n", resp.JsonData)
+	fmt.Printf("%s\n", string(formattedJSON))
 
 	return nil
 }
