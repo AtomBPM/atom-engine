@@ -11,6 +11,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"atom-engine/proto/process/processpb"
 	"atom-engine/src/core/logger"
@@ -242,10 +243,32 @@ func (s *processServiceServer) ListProcessInstances(ctx context.Context, req *pr
 // ListTokens lists tokens
 // Получает список токенов
 func (s *processServiceServer) ListTokens(ctx context.Context, req *processpb.ListTokensRequest) (*processpb.ListTokensResponse, error) {
+	// Set defaults for pagination and sorting parameters
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20 // Default page size
+	}
+	page := req.Page
+	if page <= 0 {
+		page = 1 // Default page
+	}
+	sortBy := req.SortBy
+	if sortBy == "" {
+		sortBy = "created_at" // Default sort field
+	}
+	sortOrder := req.SortOrder
+	if sortOrder == "" {
+		sortOrder = "DESC" // Default sort order
+	}
+
 	logger.Info("ListTokens request",
 		logger.String("instance_id_filter", req.InstanceIdFilter),
 		logger.String("state_filter", req.StateFilter),
-		logger.Int("limit", int(req.Limit)))
+		logger.Int("limit", int(req.Limit)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)),
+		logger.String("sort_by", sortBy),
+		logger.String("sort_order", sortOrder))
 
 	// Get process component
 	processComp := s.core.GetProcessComponent()
@@ -319,9 +342,58 @@ func (s *processServiceServer) ListTokens(ctx context.Context, req *processpb.Li
 		}, nil
 	}
 
-	// Apply limit if specified
-	if req.Limit > 0 && len(tokens) > int(req.Limit) {
-		tokens = tokens[:req.Limit]
+	// Store total count before pagination
+	totalCount := len(tokens)
+
+	// Apply sorting
+	sort.Slice(tokens, func(i, j int) bool {
+		switch sortBy {
+		case "created_at":
+			if sortOrder == "ASC" {
+				return tokens[i].CreatedAt.Before(tokens[j].CreatedAt)
+			}
+			return tokens[i].CreatedAt.After(tokens[j].CreatedAt)
+		case "updated_at":
+			if sortOrder == "ASC" {
+				return tokens[i].UpdatedAt.Before(tokens[j].UpdatedAt)
+			}
+			return tokens[i].UpdatedAt.After(tokens[j].UpdatedAt)
+		case "token_id":
+			if sortOrder == "ASC" {
+				return tokens[i].TokenID < tokens[j].TokenID
+			}
+			return tokens[i].TokenID > tokens[j].TokenID
+		default:
+			// Default to created_at DESC
+			return tokens[i].CreatedAt.After(tokens[j].CreatedAt)
+		}
+	})
+
+	// Calculate pagination
+	totalPages := (totalCount + int(pageSize) - 1) / int(pageSize)
+	offset := (int(page) - 1) * int(pageSize)
+
+	// Apply pagination
+	var paginatedTokens []*models.Token
+	if offset < len(tokens) {
+		end := offset + int(pageSize)
+		if end > len(tokens) {
+			end = len(tokens)
+		}
+		paginatedTokens = tokens[offset:end]
+	}
+
+	// Use paginated tokens for new pagination system or legacy limit for old system
+	if req.PageSize > 0 || (req.PageSize == 0 && req.Limit == 0) {
+		// New pagination system (also default when no parameters specified)
+		tokens = paginatedTokens
+	} else if req.Limit > 0 && req.PageSize <= 0 {
+		// Legacy limit system for backward compatibility
+		if len(tokens) > int(req.Limit) {
+			tokens = tokens[:req.Limit]
+			totalCount = len(tokens)
+			totalPages = 1
+		}
 	}
 
 	// Convert to protobuf format
@@ -351,12 +423,21 @@ func (s *processServiceServer) ListTokens(ctx context.Context, req *processpb.Li
 		protoTokens = append(protoTokens, protoToken)
 	}
 
-	logger.Info("Tokens listed successfully", logger.Int("count", len(protoTokens)))
+	logger.Info("Tokens listed successfully", 
+		logger.Int("count", len(protoTokens)),
+		logger.Int("total_count", totalCount),
+		logger.Int("page", int(page)),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("total_pages", totalPages))
 
 	return &processpb.ListTokensResponse{
-		Tokens:  protoTokens,
-		Success: true,
-		Message: fmt.Sprintf("found %d tokens", len(protoTokens)),
+		Tokens:     protoTokens,
+		Success:    true,
+		Message:    fmt.Sprintf("found %d tokens (page %d of %d)", len(protoTokens), page, totalPages),
+		TotalCount: int32(totalCount),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 

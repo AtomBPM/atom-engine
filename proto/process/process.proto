@@ -122,7 +122,11 @@ message ProcessInstanceInfo {
 message ListTokensRequest {
   string instance_id_filter = 1;  // Optional filter by process instance ID
   string state_filter = 2;        // Optional filter by token state (ACTIVE, COMPLETED, CANCELLED)
-  int32 limit = 3;                // Optional limit for number of results
+  int32 limit = 3;                // Optional limit for number of results (deprecated, use page_size)
+  int32 page_size = 4;            // Number of items per page (default: 20)
+  int32 page = 5;                 // Page number (1-based, default: 1)
+  string sort_by = 6;             // Sort field (default: "created_at")
+  string sort_order = 7;          // Sort order: "ASC" or "DESC" (default: "DESC")
 }
 
 // Response for listing tokens
@@ -130,6 +134,10 @@ message ListTokensResponse {
   repeated TokenInfo tokens = 1;
   bool success = 2;
   string message = 3;
+  int32 total_count = 4;          // Total number of tokens matching filters
+  int32 page = 5;                 // Current page number
+  int32 page_size = 6;            // Number of items per page
+  int32 total_pages = 7;          // Total number of pages
 }
 
 // Token information

@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"atom-engine/proto/process/processpb"
@@ -23,20 +24,45 @@ import (
 func (d *DaemonCommand) TokenList() error {
 	logger.Debug("Listing tokens")
 
-	// Parse arguments for filtering
+	// Parse arguments for filtering and pagination
 	var instanceID, state string
+	var pageSize, page int32 = 20, 1  // Default values
 
 	args := os.Args[3:] // Skip "atomd token list"
-	if len(args) > 0 && args[0] != "" {
-		instanceID = args[0]
-	}
-	if len(args) > 1 && args[1] != "" {
-		state = args[1]
+	
+	// Parse arguments: handle flags and positional arguments
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		
+		if arg == "--page" || arg == "-p" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &page); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if arg == "--page-size" || arg == "-s" {
+			if i+1 < len(args) {
+				if p, err := fmt.Sscanf(args[i+1], "%d", &pageSize); err == nil && p == 1 {
+					i++ // Skip the next argument as it's the value
+					continue
+				}
+			}
+		} else if !strings.HasPrefix(arg, "--") && !strings.HasPrefix(arg, "-") {
+			// Positional arguments
+			if instanceID == "" {
+				instanceID = arg
+			} else if state == "" {
+				state = arg
+			}
+		}
 	}
 
 	logger.Debug("Token list request",
 		logger.String("instance_id", instanceID),
-		logger.String("state", state))
+		logger.String("state", state),
+		logger.Int("page_size", int(pageSize)),
+		logger.Int("page", int(page)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -56,7 +82,11 @@ func (d *DaemonCommand) TokenList() error {
 	response, err := client.ListTokens(ctx, &processpb.ListTokensRequest{
 		InstanceIdFilter: instanceID,
 		StateFilter:      state,
-		Limit:            0, // No limit
+		Limit:            0, // Legacy field for backward compatibility
+		PageSize:         pageSize,
+		Page:             page,
+		SortBy:           "created_at",
+		SortOrder:        "DESC",
 	})
 	if err != nil {
 		logger.Error("Failed to list tokens", logger.String("error", err.Error()))
@@ -70,10 +100,20 @@ func (d *DaemonCommand) TokenList() error {
 
 	fmt.Printf("Token List\n")
 	fmt.Printf("==========\n")
-	fmt.Printf("Found %d token(s):\n\n", len(response.Tokens))
+	
+	// Display pagination information
+	if response.TotalPages > 1 {
+		fmt.Printf("Page %d of %d (Total: %d tokens, Showing: %d)\n\n", 
+			response.Page, response.TotalPages, response.TotalCount, len(response.Tokens))
+	} else {
+		fmt.Printf("Found %d token(s):\n\n", response.TotalCount)
+	}
 
 	if len(response.Tokens) == 0 {
 		fmt.Printf("No tokens found.\n")
+		if response.TotalPages > 1 {
+			fmt.Printf("Try a different page number with --page <N>\n")
+		}
 		return nil
 	}
 
@@ -95,6 +135,39 @@ func (d *DaemonCommand) TokenList() error {
 			colorizeStatus(token.State),
 			waitingFor,
 			createdAt)
+	}
+
+	// Display navigation hints for pagination
+	if response.TotalPages > 1 {
+		fmt.Printf("\n")
+		if response.Page > 1 {
+			fmt.Printf("Previous page: atomd token list")
+			if instanceID != "" {
+				fmt.Printf(" %s", instanceID)
+			}
+			if state != "" {
+				fmt.Printf(" %s", state)
+			}
+			fmt.Printf(" --page %d", response.Page-1)
+			if pageSize != 20 {
+				fmt.Printf(" --page-size %d", pageSize)
+			}
+			fmt.Printf("\n")
+		}
+		if response.Page < response.TotalPages {
+			fmt.Printf("Next page: atomd token list")
+			if instanceID != "" {
+				fmt.Printf(" %s", instanceID)
+			}
+			if state != "" {
+				fmt.Printf(" %s", state)
+			}
+			fmt.Printf(" --page %d", response.Page+1)
+			if pageSize != 20 {
+				fmt.Printf(" --page-size %d", pageSize)
+			}
+			fmt.Printf("\n")
+		}
 	}
 
 	return nil
