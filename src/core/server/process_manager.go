@@ -10,6 +10,7 @@ package server
 
 import (
 	"atom-engine/src/core/grpc"
+	"atom-engine/src/core/interfaces"
 	"atom-engine/src/core/models"
 	"atom-engine/src/process"
 )
@@ -31,7 +32,7 @@ type processComponentAdapter struct {
 
 // StartProcessInstance starts new process instance
 // Запускает новый экземпляр процесса
-func (a *processComponentAdapter) StartProcessInstance(processKey string, variables map[string]interface{}) (*grpc.ProcessInstanceResult, error) {
+func (a *processComponentAdapter) StartProcessInstance(processKey string, variables map[string]interface{}) (*interfaces.ProcessInstanceResult, error) {
 	instance, err := a.comp.StartProcessInstance(processKey, variables)
 	if err != nil {
 		return nil, err
@@ -49,27 +50,29 @@ func (a *processComponentAdapter) StartProcessInstance(processKey string, variab
 
 // GetProcessInstanceStatus gets process instance status
 // Получает статус экземпляра процесса
-func (a *processComponentAdapter) GetProcessInstanceStatus(instanceID string) (*grpc.ProcessInstanceResult, error) {
+func (a *processComponentAdapter) GetProcessInstanceStatus(instanceID string) (*interfaces.ProcessInstanceStatus, error) {
 	instance, err := a.comp.GetProcessInstanceStatus(instanceID)
 	if err != nil {
 		return nil, err
 	}
 
-	var completedAt int64
+	var completedAtStr string
 	if instance.CompletedAt != nil {
-		completedAt = instance.CompletedAt.Unix()
+		completedAtStr = instance.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
 	}
 
-	return &grpc.ProcessInstanceResult{
+	return &interfaces.ProcessInstanceStatus{
 		InstanceID:      instance.InstanceID,
 		ProcessID:       instance.ProcessID,
 		ProcessName:     instance.ProcessName,
+		Status:          string(instance.State),
 		State:           string(instance.State),
 		CurrentActivity: instance.CurrentActivity,
 		StartedAt:       instance.StartedAt.Unix(),
 		UpdatedAt:       instance.UpdatedAt.Unix(),
-		CompletedAt:     completedAt,
+		CompletedAt:     completedAtStr,
 		Variables:       instance.Variables,
+		CreatedAt:       instance.StartedAt.Format("2006-01-02T15:04:05Z07:00"), // Use StartedAt as CreatedAt
 	}, nil
 }
 
@@ -81,29 +84,31 @@ func (a *processComponentAdapter) CancelProcessInstance(instanceID string, reaso
 
 // ListProcessInstances lists process instances with optional filters
 // Получает список экземпляров процессов с опциональными фильтрами
-func (a *processComponentAdapter) ListProcessInstances(statusFilter string, processKeyFilter string, limit int) ([]*grpc.ProcessInstanceResult, error) {
+func (a *processComponentAdapter) ListProcessInstances(statusFilter string, processKeyFilter string, limit int) ([]*interfaces.ProcessInstanceStatus, error) {
 	instances, err := a.comp.ListProcessInstances(statusFilter, processKeyFilter, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	var results []*grpc.ProcessInstanceResult
+	var results []*interfaces.ProcessInstanceStatus
 	for _, instance := range instances {
-		var completedAt int64
+		var completedAtStr string
 		if instance.CompletedAt != nil {
-			completedAt = instance.CompletedAt.Unix()
+			completedAtStr = instance.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
 		}
 
-		result := &grpc.ProcessInstanceResult{
+		result := &interfaces.ProcessInstanceStatus{
 			InstanceID:      instance.InstanceID,
 			ProcessID:       instance.ProcessID,
 			ProcessName:     instance.ProcessName,
+			Status:          string(instance.State),
 			State:           string(instance.State),
 			CurrentActivity: instance.CurrentActivity,
 			StartedAt:       instance.StartedAt.Unix(),
 			UpdatedAt:       instance.UpdatedAt.Unix(),
-			CompletedAt:     completedAt,
+			CompletedAt:     completedAtStr,
 			Variables:       instance.Variables,
+			CreatedAt:       instance.StartedAt.Format("2006-01-02T15:04:05Z07:00"), // Use StartedAt as CreatedAt
 		}
 		results = append(results, result)
 	}
@@ -111,14 +116,14 @@ func (a *processComponentAdapter) ListProcessInstances(statusFilter string, proc
 	return results, nil
 }
 
+// GetTokensByProcessInstance gets tokens for process instance
+// Получает токены для экземпляра процесса
+func (a *processComponentAdapter) GetTokensByProcessInstance(instanceID string) ([]*models.Token, error) {
+	return a.comp.GetTokensByProcessInstance(instanceID)
+}
+
 // GetActiveTokens gets active tokens for process instance
 // Получает активные токены для экземпляра процесса
 func (a *processComponentAdapter) GetActiveTokens(instanceID string) ([]*models.Token, error) {
 	return a.comp.GetActiveTokens(instanceID)
-}
-
-// GetTokensByProcessInstance gets all tokens for process instance (for trace)
-// Получает все токены для экземпляра процесса (для трассировки)
-func (a *processComponentAdapter) GetTokensByProcessInstance(instanceID string) ([]*models.Token, error) {
-	return a.comp.GetTokensByProcessInstance(instanceID)
 }

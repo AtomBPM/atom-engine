@@ -10,6 +10,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 )
 
 // storageServiceServer implements StorageService gRPC interface
@@ -43,12 +44,18 @@ func (s *storageServiceServer) GetStorageInfo(ctx context.Context, req *GetStora
 		return nil, err
 	}
 
+	// Convert statistics from int64 to string
+	statistics := make(map[string]string)
+	for k, v := range info.Statistics {
+		statistics[k] = fmt.Sprintf("%d", v)
+	}
+
 	return &GetStorageInfoResponse{
 		TotalSizeBytes: info.TotalSizeBytes,
 		UsedSizeBytes:  info.UsedSizeBytes,
 		FreeSizeBytes:  info.FreeSizeBytes,
 		TotalKeys:      info.TotalKeys,
 		DatabasePath:   info.DatabasePath,
-		Statistics:     info.Statistics,
+		Statistics:     statistics,
 	}, nil
 }

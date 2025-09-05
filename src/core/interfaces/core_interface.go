@@ -12,6 +12,7 @@ import (
 	"context"
 
 	"atom-engine/proto/timewheel/timewheelpb"
+	"atom-engine/src/core/models"
 )
 
 // CoreInterface defines the unified interface that core must provide to all consumers
@@ -109,9 +110,9 @@ type TimewheelComponentInterface interface {
 // StorageComponentInterface defines storage component interface
 // Определяет интерфейс storage компонента
 type StorageComponentInterface interface {
-	LoadAllTokens() ([]*Token, error)
-	LoadTokensByState(state TokenState) ([]*Token, error)
-	LoadToken(tokenID string) (*Token, error)
+	LoadAllTokens() ([]*models.Token, error)
+	LoadTokensByState(state models.TokenState) ([]*models.Token, error)
+	LoadToken(tokenID string) (*models.Token, error)
 }
 
 // ProcessComponentInterface defines process component interface
@@ -120,30 +121,44 @@ type ProcessComponentInterface interface {
 	StartProcessInstance(processKey string, variables map[string]interface{}) (*ProcessInstanceResult, error)
 	GetProcessInstanceStatus(instanceID string) (*ProcessInstanceStatus, error)
 	CancelProcessInstance(instanceID string, reason string) error
-	ListProcessInstances(statusFilter string, limit int32) (*ProcessInstanceList, error)
+	ListProcessInstances(statusFilter string, processKeyFilter string, limit int) ([]*ProcessInstanceStatus, error)
+	GetTokensByProcessInstance(instanceID string) ([]*models.Token, error)
+	GetActiveTokens(instanceID string) ([]*models.Token, error)
 }
 
 // ProcessInstanceResult represents process instance creation result
 // Представляет результат создания экземпляра процесса
 type ProcessInstanceResult struct {
-	InstanceID    string                 `json:"instance_id"`
-	ProcessKey    string                 `json:"process_key"`
-	Version       int32                  `json:"version"`
-	Variables     map[string]interface{} `json:"variables"`
-	Status        string                 `json:"status"`
-	CreatedAt     string                 `json:"created_at"`
+	InstanceID      string                 `json:"instance_id"`
+	ProcessKey      string                 `json:"process_key"`
+	ProcessID       string                 `json:"process_id"`
+	ProcessName     string                 `json:"process_name"`
+	Version         int32                  `json:"version"`
+	Variables       map[string]interface{} `json:"variables"`
+	Status          string                 `json:"status"`
+	State           string                 `json:"state"`
+	CurrentActivity string                 `json:"current_activity"`
+	CreatedAt       string                 `json:"created_at"`
+	StartedAt       int64                  `json:"started_at"`
+	UpdatedAt       int64                  `json:"updated_at"`
+	CompletedAt     int64                  `json:"completed_at,omitempty"`
 }
 
 // ProcessInstanceStatus represents process instance status
 // Представляет статус экземпляра процесса
 type ProcessInstanceStatus struct {
-	InstanceID    string                 `json:"instance_id"`
-	ProcessKey    string                 `json:"process_key"`
-	Status        string                 `json:"status"`
-	Variables     map[string]interface{} `json:"variables"`
-	CreatedAt     string                 `json:"created_at"`
-	UpdatedAt     string                 `json:"updated_at"`
-	CompletedAt   string                 `json:"completed_at,omitempty"`
+	InstanceID      string                 `json:"instance_id"`
+	ProcessKey      string                 `json:"process_key"`
+	ProcessID       string                 `json:"process_id"`
+	ProcessName     string                 `json:"process_name"`
+	Status          string                 `json:"status"`
+	State           string                 `json:"state"`
+	CurrentActivity string                 `json:"current_activity"`
+	Variables       map[string]interface{} `json:"variables"`
+	CreatedAt       string                 `json:"created_at"`
+	UpdatedAt       int64                  `json:"updated_at"`
+	StartedAt       int64                  `json:"started_at"`
+	CompletedAt     string                 `json:"completed_at,omitempty"`
 }
 
 // ProcessInstanceList represents list of process instances
@@ -155,20 +170,7 @@ type ProcessInstanceList struct {
 	PageNumber int32                    `json:"page_number"`
 }
 
-// Token represents process token (simplified for interface)
-// Представляет токен процесса (упрощенный для интерфейса)
-type Token interface {
-	GetID() string
-	GetProcessInstanceID() string
-	GetState() TokenState
-}
-
-// TokenState represents token state
-// Представляет состояние токена
-type TokenState string
-
-const (
-	TokenStateActive    TokenState = "ACTIVE"
-	TokenStateCompleted TokenState = "COMPLETED"
-	TokenStateCancelled TokenState = "CANCELLED"
-)
+// Token type alias for models.Token
+// Псевдоним типа для models.Token
+type Token = models.Token
+type TokenState = models.TokenState

@@ -18,7 +18,9 @@ import (
 // Type aliases for generated proto types
 // Псевдонимы типов для сгенерированных proto типов
 type GetStorageStatusRequest = storagepb.GetStorageStatusRequest
+type GetStorageStatusResponse = storagepb.GetStorageStatusResponse
 type GetStorageInfoRequest = storagepb.GetStorageInfoRequest
+type GetStorageInfoResponse = storagepb.GetStorageInfoResponse
 
 // Type aliases for interfaces package to maintain compatibility
 // Псевдонимы типов из пакета interfaces для поддержания совместимости

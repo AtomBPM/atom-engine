@@ -14,6 +14,7 @@ import (
 	"sort"
 
 	"atom-engine/proto/process/processpb"
+	"atom-engine/src/core/interfaces"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
 )
@@ -240,7 +241,7 @@ func (s *processServiceServer) ListProcessInstances(ctx context.Context, req *pr
 	offset := (int(page) - 1) * int(pageSize)
 
 	// Apply pagination
-	var paginatedInstances []*ProcessInstanceResult
+	var paginatedInstances []*interfaces.ProcessInstanceStatus
 	if offset < len(instances) {
 		end := offset + int(pageSize)
 		if end > len(instances) {

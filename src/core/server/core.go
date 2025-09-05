@@ -207,13 +207,19 @@ func (c *Core) GetStorageInfoForREST() (*handlers.StorageInfoResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Convert statistics from int64 to string for REST handlers
+	statistics := make(map[string]string)
+	for k, v := range grpcInfo.Statistics {
+		statistics[k] = fmt.Sprintf("%d", v)
+	}
+
 	return &handlers.StorageInfoResponse{
 		TotalSizeBytes: grpcInfo.TotalSizeBytes,
 		UsedSizeBytes:  grpcInfo.UsedSizeBytes,
 		FreeSizeBytes:  grpcInfo.FreeSizeBytes,
 		TotalKeys:      grpcInfo.TotalKeys,
 		DatabasePath:   grpcInfo.DatabasePath,
-		Statistics:     grpcInfo.Statistics,
+		Statistics:     statistics,
 	}, nil
 }
 
