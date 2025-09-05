@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"atom-engine/src/core/grpc"
+	"atom-engine/src/core/interfaces"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/restapi/middleware"
 	"atom-engine/src/core/restapi/models"
@@ -28,8 +28,8 @@ type StorageHandler struct {
 
 // CoreInterface defines methods needed for storage operations
 type CoreInterface interface {
-	GetStorageStatus() (*grpc.StorageStatusResponse, error)
-	GetStorageInfo() (*grpc.StorageInfoResponse, error)
+	GetStorageStatus() (*interfaces.StorageStatusResponse, error)
+	GetStorageInfo() (*interfaces.StorageInfoResponse, error)
 }
 
 // Response types for storage operations

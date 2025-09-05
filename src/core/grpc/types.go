@@ -10,34 +10,21 @@ package grpc
 
 import (
 	"atom-engine/proto/storage/storagepb"
+	"atom-engine/src/core/interfaces"
 )
 
-// StorageStatusResponse represents storage status response for internal use
-// Представляет ответ со статусом storage для внутреннего использования
-type StorageStatusResponse struct {
-	IsConnected   bool   `json:"is_connected"`
-	IsHealthy     bool   `json:"is_healthy"`
-	Status        string `json:"status"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
-}
-
-// StorageInfoResponse represents storage info response for internal use
-// Представляет ответ с информацией storage для внутреннего использования
-type StorageInfoResponse struct {
-	TotalSizeBytes int64             `json:"total_size_bytes"`
-	UsedSizeBytes  int64             `json:"used_size_bytes"`
-	FreeSizeBytes  int64             `json:"free_size_bytes"`
-	TotalKeys      int64             `json:"total_keys"`
-	DatabasePath   string            `json:"database_path"`
-	Statistics     map[string]string `json:"statistics"`
-}
+// Removed old type definitions, now using unified interfaces
 
 // Type aliases for generated proto types
 // Псевдонимы типов для сгенерированных proto типов
 type GetStorageStatusRequest = storagepb.GetStorageStatusRequest
-type GetStorageStatusResponse = storagepb.GetStorageStatusResponse
 type GetStorageInfoRequest = storagepb.GetStorageInfoRequest
-type GetStorageInfoResponse = storagepb.GetStorageInfoResponse
+
+// Type aliases for interfaces package to maintain compatibility
+// Псевдонимы типов из пакета interfaces для поддержания совместимости
+type StorageStatusResponse = interfaces.StorageStatusResponse
+type StorageInfoResponse = interfaces.StorageInfoResponse
+type ProcessInstanceResult = interfaces.ProcessInstanceResult
 type StorageServiceServer = storagepb.StorageServiceServer
 type UnimplementedStorageServiceServer = storagepb.UnimplementedStorageServiceServer
 

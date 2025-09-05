@@ -16,9 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"atom-engine/proto/timewheel/timewheelpb"
 	"atom-engine/src/core/auth"
-	"atom-engine/src/core/grpc"
+	"atom-engine/src/core/interfaces"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/restapi/handlers"
 	"atom-engine/src/core/restapi/middleware"
@@ -85,35 +84,9 @@ type Server struct {
 	incidentsHandler  *handlers.IncidentsHandler
 }
 
-// CoreInterface defines methods that core must provide to REST API
-type CoreInterface interface {
-	// Storage
-	GetStorageStatus() (*grpc.StorageStatusResponse, error)
-	GetStorageInfo() (*grpc.StorageInfoResponse, error)
-
-	// Process management
-	GetProcessComponent() grpc.ProcessComponentInterface
-
-	// Timer management
-	GetTimewheelComponent() grpc.TimewheelComponentInterface
-	GetTimewheelStats() (*timewheelpb.GetTimeWheelStatsResponse, error)
-	GetTimersList(statusFilter string, limit int32) (*timewheelpb.ListTimersResponse, error)
-
-	// Messaging
-	SendMessage(componentName, messageJSON string) error
-	WaitForParserResponse(timeoutMs int) (string, error)
-	WaitForJobsResponse(timeoutMs int) (string, error)
-	WaitForMessagesResponse(timeoutMs int) (string, error)
-	WaitForIncidentsResponse(timeoutMs int) (string, error)
-
-	// Components
-	GetMessagesComponent() interface{}
-	GetJobsComponent() interface{}
-	GetParserComponent() interface{}
-	GetExpressionComponent() interface{}
-	GetIncidentsComponent() interface{}
-	GetAuthComponent() interface{}
-}
+// Import the unified core interface
+// Импортируем унифицированный интерфейс core
+type CoreInterface = interfaces.CoreInterface
 
 // Response types (simplified for REST)
 type StorageStatusResponse struct {

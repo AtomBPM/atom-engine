@@ -23,6 +23,7 @@ import (
 	"atom-engine/proto/messages/messagespb"
 	"atom-engine/proto/parser/parserpb"
 	"atom-engine/proto/process/processpb"
+	"atom-engine/src/core/interfaces"
 	"atom-engine/proto/timewheel/timewheelpb"
 	"atom-engine/src/core/auth"
 	"atom-engine/src/core/logger"
@@ -39,60 +40,15 @@ type Server struct {
 }
 
 // CoreInterface defines methods that core must provide to gRPC
-// Определяет методы которые core должен предоставить для gRPC
-type CoreInterface interface {
-	GetStorageStatus() (*StorageStatusResponse, error)
-	GetStorageInfo() (*StorageInfoResponse, error)
-	GetTimewheelComponent() TimewheelComponentInterface
-	GetTimewheelStats() (*timewheelpb.GetTimeWheelStatsResponse, error)
-	GetTimersList(statusFilter string, limit int32) (*timewheelpb.ListTimersResponse, error)
+// Import the unified core interface
+// Импортируем унифицированный интерфейс core
+type CoreInterface = interfaces.CoreInterface
 
-	GetProcessComponent() ProcessComponentInterface
-	GetStorageComponent() StorageComponentInterface
-	GetMessagesComponent() interface{}
-	GetJobsComponent() interface{}
-	GetParserComponent() interface{}
-	GetExpressionComponent() interface{}
-	GetIncidentsComponent() interface{}
-	GetStorage() interface{}
-	GetAuthComponent() interface{} // Returns auth.Component
-
-	// JSON Message Routing
-	SendMessage(componentName, messageJSON string) error
-
-	// Response Handling
-	WaitForParserResponse(timeoutMs int) (string, error)
-	WaitForJobsResponse(timeoutMs int) (string, error)
-	WaitForMessagesResponse(timeoutMs int) (string, error)
-	WaitForIncidentsResponse(timeoutMs int) (string, error)
-}
-
-// TimewheelComponentInterface defines timewheel component interface
-// Определяет интерфейс timewheel компонента
-type TimewheelComponentInterface interface {
-	ProcessMessage(ctx context.Context, messageJSON string) error
-	GetResponseChannel() <-chan string
-	GetTimerInfo(timerID string) (level int, remainingSeconds int64, found bool)
-}
-
-// StorageComponentInterface defines storage component interface
-// Определяет интерфейс storage компонента
-type StorageComponentInterface interface {
-	LoadAllTokens() ([]*models.Token, error)
-	LoadTokensByState(state models.TokenState) ([]*models.Token, error)
-	LoadToken(tokenID string) (*models.Token, error)
-}
-
-// ProcessComponentInterface defines process component interface
-// Определяет интерфейс process компонента
-type ProcessComponentInterface interface {
-	StartProcessInstance(processKey string, variables map[string]interface{}) (*ProcessInstanceResult, error)
-	GetProcessInstanceStatus(instanceID string) (*ProcessInstanceResult, error)
-	CancelProcessInstance(instanceID string, reason string) error
-	ListProcessInstances(statusFilter string, processKeyFilter string, limit int) ([]*ProcessInstanceResult, error)
-	GetActiveTokens(instanceID string) ([]*models.Token, error)
-	GetTokensByProcessInstance(instanceID string) ([]*models.Token, error)
-}
+// Use interfaces from the unified interfaces package
+// Используем интерфейсы из унифицированного пакета interfaces
+type TimewheelComponentInterface = interfaces.TimewheelComponentInterface
+type StorageComponentInterface = interfaces.StorageComponentInterface
+type ProcessComponentInterface = interfaces.ProcessComponentInterface
 
 // MessageStats represents message statistics
 type MessageStats struct {
@@ -120,19 +76,7 @@ type JobsComponentInterface interface {
 	GetJobStats() (interface{}, error)
 }
 
-// ProcessInstanceResult represents process instance result for gRPC
-// Представляет результат экземпляра процесса для gRPC
-type ProcessInstanceResult struct {
-	InstanceID      string                 `json:"instance_id"`
-	ProcessID       string                 `json:"process_id"`
-	ProcessName     string                 `json:"process_name"`
-	State           string                 `json:"state"`
-	CurrentActivity string                 `json:"current_activity"`
-	StartedAt       int64                  `json:"started_at"`
-	UpdatedAt       int64                  `json:"updated_at"`
-	CompletedAt     int64                  `json:"completed_at,omitempty"`
-	Variables       map[string]interface{} `json:"variables"`
-}
+// Removed ProcessInstanceResult - now using unified interfaces
 
 // Config holds gRPC server configuration
 // Конфигурация gRPC сервера
