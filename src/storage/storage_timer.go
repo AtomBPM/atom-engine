@@ -169,3 +169,36 @@ func (s *BadgerStorage) DeleteTimer(timerID string) error {
 	logger.Debug("Timer deleted from storage", logger.String("timer_id", timerID))
 	return nil
 }
+
+// UpdateTimer updates timer in database
+// Обновляет таймер в базе данных
+func (s *BadgerStorage) UpdateTimer(timer *TimerRecord) error {
+	if !s.ready {
+		return fmt.Errorf("storage not ready")
+	}
+
+	timer.UpdatedAt = time.Now()
+
+	data, err := json.Marshal(timer)
+	if err != nil {
+		return fmt.Errorf("failed to marshal timer: %w", err)
+	}
+
+	key := fmt.Sprintf("timer_%s", timer.ID)
+	err = s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(key), data)
+	})
+
+	if err != nil {
+		logger.Error("Failed to update timer",
+			logger.String("timer_id", timer.ID),
+			logger.String("error", err.Error()))
+		return fmt.Errorf("failed to update timer in database: %w", err)
+	}
+
+	logger.Debug("Timer updated in storage",
+		logger.String("timer_id", timer.ID),
+		logger.String("state", timer.State))
+
+	return nil
+}

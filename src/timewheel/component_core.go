@@ -22,6 +22,7 @@ type StorageInterface interface {
 	LoadTimer(timerID string) (*storage.TimerRecord, error)
 	LoadAllTimers() ([]*storage.TimerRecord, error)
 	DeleteTimer(timerID string) error
+	UpdateTimer(timer *storage.TimerRecord) error
 }
 
 // Component represents timewheel component for core integration

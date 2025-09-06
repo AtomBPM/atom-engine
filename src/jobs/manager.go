@@ -277,6 +277,45 @@ func (jm *JobManager) CompleteJob(ctx context.Context, jobID string, variables m
 	return nil
 }
 
+// CompleteJobWithBPMNError completes job with BPMN error status
+func (jm *JobManager) CompleteJobWithBPMNError(ctx context.Context, jobID, errorCode, errorMessage string) error {
+	jm.logger.Info("Completing job with BPMN error",
+		logger.String("jobID", jobID),
+		logger.String("errorCode", errorCode),
+		logger.String("errorMessage", errorMessage))
+
+	job, err := jm.storage.GetJob(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to get job: %w", err)
+	}
+
+	if job == nil {
+		return fmt.Errorf("job not found: %s", jobID)
+	}
+
+	// Job should be RUNNING when BPMN error is thrown
+	if job.Status != models.JobStatusRunning {
+		jm.logger.Warn("Job is not running when completing with BPMN error",
+			logger.String("jobID", jobID),
+			logger.String("status", string(job.Status)))
+	}
+
+	// Mark as ERROR_THROWN with error details
+	job.MarkAsErrorThrown(errorCode, errorMessage)
+
+	if err := jm.storage.SaveJob(ctx, job); err != nil {
+		return fmt.Errorf("failed to save job with BPMN error completion: %w", err)
+	}
+
+	// Update worker info - job is now closed
+	jm.updateWorkerActiveJobs(job.WorkerID, -1)
+
+	jm.logger.Info("Job completed as ERROR_THROWN successfully",
+		logger.String("jobID", jobID),
+		logger.String("errorCode", errorCode))
+	return nil
+}
+
 // FailJob fails a job
 func (jm *JobManager) FailJob(ctx context.Context, jobID string, retries int, errorMessage string, retryBackoff time.Duration) error {
 	jm.logger.Info("Failing job", logger.String("jobID", jobID), logger.Int("retries", retries), logger.String("error", errorMessage))
@@ -335,27 +374,11 @@ func (jm *JobManager) FailJob(ctx context.Context, jobID string, retries int, er
 					logger.String("elementID", job.ElementID))
 			}
 
-			// Create incident for job failure when no retries left
-			// Создаем инцидент для job failure когда retries закончились
-			err := jm.component.CreateIncident(
-				"JOB_FAILURE",
-				job.ElementID,
-				job.ProcessInstanceID,
-				job.ID,
-				job.Type,
-				job.WorkerID,
-				errorMessage,
-				job.Retries,
-			)
-			if err != nil {
-				jm.logger.Error("Failed to create incident for job failure",
-					logger.String("jobID", job.ID),
-					logger.String("error", err.Error()))
-			} else {
-				jm.logger.Info("Incident created for job failure",
-					logger.String("jobID", job.ID),
-					logger.String("elementID", job.ElementID))
-			}
+			// Incident creation is handled by process component through job callback
+			// Создание инцидента обрабатывается process компонентом через job callback
+			jm.logger.Debug("Job failure callback sent to process component for incident handling",
+				logger.String("jobID", job.ID),
+				logger.String("elementID", job.ElementID))
 		}
 	}
 
@@ -382,10 +405,8 @@ func (jm *JobManager) ThrowError(ctx context.Context, jobID, errorCode, errorMes
 	}
 
 	// Update job variables if provided
-	if variables != nil {
-		for k, v := range variables {
-			job.Variables[k] = v
-		}
+	for k, v := range variables {
+		job.Variables[k] = v
 	}
 
 	// Add error information to variables for callback processing

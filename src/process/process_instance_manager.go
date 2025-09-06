@@ -59,7 +59,17 @@ func (pim *ProcessInstanceManager) GetProcessInstanceStatus(instanceID string) (
 
 // CancelProcessInstance cancels process instance
 // Отменяет экземпляр процесса
-func (pim *ProcessInstanceManager) CancelProcessInstance(instanceID string, reason string) error {
+func (pim *ProcessInstanceManager) CancelProcessInstance(instanceID string, reason string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("Panic occurred while canceling process instance",
+				logger.String("instance_id", instanceID),
+				logger.String("reason", reason),
+				logger.String("panic", fmt.Sprintf("%v", r)))
+			err = fmt.Errorf("process cancellation failed due to panic: %v", r)
+		}
+	}()
+
 	logger.Info("Canceling process instance",
 		logger.String("instance_id", instanceID),
 		logger.String("reason", reason))

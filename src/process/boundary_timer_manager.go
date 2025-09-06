@@ -121,19 +121,38 @@ func (btm *BoundaryTimerManager) CreateBoundaryTimerWithID(timerRequest *TimerRe
 		return "", err
 	}
 
-	// Timer ID is generated in timewheel - we need to get it from storage
-	// ID таймера генерируется в timewheel - нужно получить его из storage
-	// For now return element_id as timer identifier (this is a simplified approach)
-	// Пока возвращаем element_id как идентификатор таймера (упрощенный подход)
+	// Find the real timer ID from storage that was just created
+	// Находим реальный timer ID из storage который только что был создан
+	allTimers, err := btm.storage.LoadAllTimers()
+	if err != nil {
+		logger.Error("Failed to load timers to find boundary timer ID",
+			logger.String("element_id", timerRequest.ElementID),
+			logger.String("parent_token_id", timerRequest.TokenID),
+			logger.String("error", err.Error()))
+		return "", fmt.Errorf("failed to load timers: %w", err)
+	}
 
-	// In real implementation, we would need to modify timewheel to return timer ID
-	// В реальной реализации нужно было бы модифицировать timewheel чтобы возвращать timer ID
+	// Find the timer we just created for this token and element
+	// Находим таймер который мы только что создали для данного токена и элемента
+	for _, timerRecord := range allTimers {
+		if timerRecord.TimerType == "BOUNDARY" &&
+			timerRecord.TokenID == timerRequest.TokenID &&
+			timerRecord.ElementID == timerRequest.ElementID &&
+			timerRecord.State == "SCHEDULED" {
 
-	// For now, generate a timer ID based on element and token
-	// Пока генерируем timer ID на основе element и token
+			logger.Info("Real boundary timer ID found in storage",
+				logger.String("element_id", timerRequest.ElementID),
+				logger.String("parent_token_id", timerRequest.TokenID),
+				logger.String("timer_id", timerRecord.ID))
+
+			return timerRecord.ID, nil
+		}
+	}
+
+	// Fallback: timer not found in storage, generate ID but log warning
+	// Fallback: таймер не найден в storage, генерируем ID но логируем предупреждение
 	timerID := models.GenerateID()
-
-	logger.Info("Boundary timer ID generated",
+	logger.Warn("Boundary timer not found in storage, using generated ID",
 		logger.String("element_id", timerRequest.ElementID),
 		logger.String("parent_token_id", timerRequest.TokenID),
 		logger.String("timer_id", timerID))
@@ -193,22 +212,34 @@ func (btm *BoundaryTimerManager) CancelBoundaryTimersForToken(tokenID string) er
 
 	logger.Info("Canceling boundary timers for token",
 		logger.String("token_id", tokenID),
-		logger.Int("timer_count", len(boundaryTimers)))
+		logger.Int("timer_count", len(boundaryTimers)),
+		logger.String("boundary_timer_ids", fmt.Sprintf("%v", boundaryTimers)))
 
-	// Cancel each boundary timer
-	// Отменяем каждый boundary таймер
+	// Cancel each boundary timer with panic recovery
+	// Отменяем каждый boundary таймер с восстановлением от паник
 	for _, timerID := range boundaryTimers {
-		if err := btm.cancelTimer(timerID); err != nil {
-			logger.Error("Failed to cancel boundary timer",
-				logger.String("token_id", tokenID),
-				logger.String("timer_id", timerID),
-				logger.String("error", err.Error()))
-			// Continue with other timers
-		} else {
-			logger.Info("Boundary timer canceled",
-				logger.String("token_id", tokenID),
-				logger.String("timer_id", timerID))
-		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Panic occurred while canceling boundary timer",
+						logger.String("token_id", tokenID),
+						logger.String("timer_id", timerID),
+						logger.String("panic", fmt.Sprintf("%v", r)))
+				}
+			}()
+
+			if err := btm.cancelTimer(timerID); err != nil {
+				logger.Error("Failed to cancel boundary timer",
+					logger.String("token_id", tokenID),
+					logger.String("timer_id", timerID),
+					logger.String("error", err.Error()))
+				// Continue with other timers
+			} else {
+				logger.Info("Boundary timer canceled",
+					logger.String("token_id", tokenID),
+					logger.String("timer_id", timerID))
+			}
+		}()
 	}
 
 	// Update token to clear boundary timer IDs (if needed)
@@ -311,10 +342,19 @@ func (btm *BoundaryTimerManager) HandleBoundaryTimerCallback(timerID, elementID,
 				logger.String("job_id", jobID),
 				logger.String("boundary_event_id", elementID))
 
-			// Note: cancelJob is part of JobCallbacks component
-			// This is a cross-component dependency that should be handled at the Component level
-			logger.Info("Job cancellation delegated to parent component",
-				logger.String("job_id", jobID))
+			// Cancel job directly by ID - more efficient than CancelJobForToken
+			// Отменяем job напрямую по ID - эффективнее чем CancelJobForToken
+			if err := btm.component.CancelJobByID(jobID); err != nil {
+				logger.Error("Failed to cancel job for interrupted token",
+					logger.String("token_id", tokenID),
+					logger.String("job_id", jobID),
+					logger.String("error", err.Error()))
+				// Continue execution even if job cancellation fails
+			} else {
+				logger.Info("Job canceled successfully for interrupted token",
+					logger.String("token_id", tokenID),
+					logger.String("job_id", jobID))
+			}
 
 			// Clear waiting state
 			// Очищаем состояние ожидания

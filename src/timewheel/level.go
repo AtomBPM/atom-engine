@@ -89,6 +89,28 @@ func (twl *TimingWheelLevel) RemoveTimer(anchor *TimerAnchor) error {
 	return nil
 }
 
+// RemoveTimerBySlotAndID removes timer by slot and ID
+// Удаляет таймер по слоту и ID
+func (twl *TimingWheelLevel) RemoveTimerBySlotAndID(slot int, timerID string) error {
+	twl.mu.Lock()
+	defer twl.mu.Unlock()
+
+	if slot < 0 || slot >= twl.size {
+		return ErrInvalidAnchor
+	}
+
+	slotList := twl.slots[slot]
+	for element := slotList.Front(); element != nil; element = element.Next() {
+		entry := element.Value.(*TimerEntry)
+		if entry.Timer.ID == timerID {
+			slotList.Remove(element)
+			return nil
+		}
+	}
+
+	return ErrTimerNotFound
+}
+
 // Tick advances level by one tick and returns expired timers
 // Продвигает уровень на один тик и возвращает истекшие таймеры
 func (twl *TimingWheelLevel) Tick() ([]*TimerEntry, []*TimerEntry) {

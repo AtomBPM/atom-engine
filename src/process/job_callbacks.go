@@ -9,12 +9,12 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package process
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
+	"atom-engine/src/incidents"
 	"atom-engine/src/storage"
 )
 
@@ -250,20 +250,21 @@ func (jc *JobCallbacks) handleJobBPMNError(token *models.Token, jobID, elementID
 			logger.String("token_id", token.TokenID),
 			logger.String("error_code", errorCode))
 
-		// No error boundary found - mark job as failed and create incident
-		// Граничного события ошибки не найдено - помечаем job как failed и создаем инцидент
+		// No error boundary found - close job as ERROR_THROWN and create UNHANDLED_BPMN_ERROR incident
+		// Граничного события ошибки не найдено - закрываем job как ERROR_THROWN и создаем UNHANDLED_BPMN_ERROR инцидент
 
-		// Mark job as failed via jobs component
-		if err := jc.failJob(jobID, fmt.Sprintf("BPMN Error: %s", errorMessage)); err != nil {
-			logger.Error("Failed to mark job as failed after unhandled BPMN error",
+		// Close job as ERROR_THROWN (no retries, no JOB_FAILURE incident)
+		if err := jc.completeJobWithBPMNError(jobID, errorCode, errorMessage); err != nil {
+			logger.Error("Failed to close job as ERROR_THROWN after unhandled BPMN error",
 				logger.String("job_id", jobID),
 				logger.String("error_code", errorCode),
 				logger.String("error", err.Error()))
 		}
 
-		err := jc.createBPMNErrorIncident(token, elementID, errorCode, errorMessage)
+		// Create UNHANDLED_BPMN_ERROR incident instead of JOB_FAILURE
+		err := jc.createUnhandledBPMNErrorIncident(token, elementID, errorCode, errorMessage)
 		if err != nil {
-			logger.Error("Failed to create BPMN error incident",
+			logger.Error("Failed to create unhandled BPMN error incident",
 				logger.String("token_id", token.TokenID),
 				logger.String("element_id", elementID),
 				logger.String("error_code", errorCode),
@@ -290,6 +291,17 @@ func (jc *JobCallbacks) handleJobBPMNError(token *models.Token, jobID, elementID
 	// Remove error boundary subscription
 	jc.component.RemoveErrorBoundariesForToken(token.TokenID)
 
+	// Complete job with BPMN error status (job is now closed)
+	// Завершаем job со статусом BPMN error (job теперь закрыт)
+	if err := jc.completeJobWithBPMNError(jobID, errorCode, errorMessage); err != nil {
+		logger.Error("Failed to complete job after BPMN error boundary activation",
+			logger.String("job_id", jobID),
+			logger.String("error_code", errorCode),
+			logger.String("error", err.Error()))
+		// Continue processing despite job completion error
+		// Продолжаем обработку несмотря на ошибку завершения job
+	}
+
 	// Cancel the original token
 	originalToken := token
 	originalToken.SetState(models.TokenStateCanceled)
@@ -306,10 +318,8 @@ func (jc *JobCallbacks) handleJobBPMNError(token *models.Token, jobID, elementID
 		// Use callback helper to continue execution from error boundary
 		// For BPMN errors, we pass the error boundary element ID and variables with error info
 		errorVariables := make(map[string]interface{})
-		if variables != nil {
-			for k, v := range variables {
-				errorVariables[k] = v
-			}
+		for k, v := range variables {
+			errorVariables[k] = v
 		}
 		errorVariables["errorCode"] = errorCode
 		errorVariables["errorMessage"] = errorMessage
@@ -403,34 +413,72 @@ func (jc *JobCallbacks) failJob(jobID, errorMessage string) error {
 	return nil
 }
 
+// completeJobWithBPMNError marks job as completed with BPMN error status via jobs component
+// Помечает job как completed с статусом BPMN error через jobs компонент
+func (jc *JobCallbacks) completeJobWithBPMNError(jobID, errorCode, errorMessage string) error {
+	if jc.core == nil {
+		return fmt.Errorf("core interface not set")
+	}
+
+	jobsComp := jc.core.GetJobsComponent()
+	if jobsComp == nil {
+		return fmt.Errorf("jobs component not available")
+	}
+
+	// Try to complete job with BPMN error via jobs component interface
+	// Пытаемся завершить job с BPMN error через интерфейс jobs компонента
+	if jobsCompleteMethod, ok := jobsComp.(interface {
+		CompleteJobWithBPMNError(jobKey, errorCode, errorMessage string) error
+	}); ok {
+		if err := jobsCompleteMethod.CompleteJobWithBPMNError(jobID, errorCode, errorMessage); err != nil {
+			return fmt.Errorf("failed to complete job with BPMN error via jobs component: %w", err)
+		}
+		logger.Info("Job completed as ERROR_THROWN via jobs component",
+			logger.String("job_id", jobID),
+			logger.String("error_code", errorCode))
+		return nil
+	}
+
+	// Fallback: log warning
+	// Фоллбэк: логируем предупреждение
+	logger.Warn("Jobs component doesn't support CompleteJobWithBPMNError method",
+		logger.String("job_id", jobID))
+
+	return nil
+}
+
 // createJobFailureIncident creates incident for unhandled job failure
 func (jc *JobCallbacks) createJobFailureIncident(token *models.Token, jobID, elementID, errorMessage string) error {
 	if jc.component == nil {
 		return fmt.Errorf("component not available")
 	}
 
-	core := jc.component.GetCore()
-	if core == nil {
+	if jc.core == nil {
 		return fmt.Errorf("core interface not available")
 	}
 
-	incidentsComp := core.GetIncidentsComponent()
+	incidentsComp := jc.core.GetIncidentsComponent()
 	if incidentsComp == nil {
 		return fmt.Errorf("incidents component not available")
 	}
 
-	// Type assertion to incidents interface
-	type IncidentsInterface interface {
-		CreateJobFailureIncident(ctx context.Context, jobKey, elementID, processInstanceID, message string, retries int) (interface{}, error)
+	payload := incidents.CreateIncidentPayload{
+		Type:              "job_failure",
+		Message:           errorMessage,
+		ProcessInstanceID: token.ProcessInstanceID,
+		ElementID:         elementID,
+		ElementType:       "serviceTask", // Service task element type
+		JobKey:            jobID,
+		OriginalRetries:   0,
 	}
 
-	incidentsInterface, ok := incidentsComp.(IncidentsInterface)
-	if !ok {
-		return fmt.Errorf("failed to cast incidents component to interface")
+	message, err := incidents.CreateIncidentMessage(payload)
+	if err != nil {
+		return fmt.Errorf("failed to create incident message: %w", err)
 	}
 
-	ctx := context.Background()
-	_, err := incidentsInterface.CreateJobFailureIncident(ctx, jobID, elementID, token.ProcessInstanceID, errorMessage, 0)
+	// Send JSON message to incidents component through Core
+	err = jc.core.SendMessage("incidents", message)
 	if err != nil {
 		return fmt.Errorf("failed to create job failure incident: %w", err)
 	}
@@ -450,34 +498,80 @@ func (jc *JobCallbacks) createBPMNErrorIncident(token *models.Token, elementID, 
 		return fmt.Errorf("component not available")
 	}
 
-	core := jc.component.GetCore()
-	if core == nil {
+	if jc.core == nil {
 		return fmt.Errorf("core interface not available")
 	}
 
-	incidentsComp := core.GetIncidentsComponent()
+	incidentsComp := jc.core.GetIncidentsComponent()
 	if incidentsComp == nil {
 		return fmt.Errorf("incidents component not available")
 	}
 
-	// Type assertion to incidents interface
-	type IncidentsInterface interface {
-		CreateBPMNErrorIncident(ctx context.Context, elementID, processInstanceID, errorCode, message string) (interface{}, error)
+	payload := incidents.CreateIncidentPayload{
+		Type:              "bpmn_error",
+		Message:           fmt.Sprintf("%s: %s", errorCode, errorMessage),
+		ErrorCode:         errorCode,
+		ProcessInstanceID: token.ProcessInstanceID,
+		ElementID:         elementID,
+		ElementType:       "serviceTask", // Service task element type
 	}
 
-	incidentsInterface, ok := incidentsComp.(IncidentsInterface)
-	if !ok {
-		return fmt.Errorf("failed to cast incidents component to interface")
+	message, err := incidents.CreateIncidentMessage(payload)
+	if err != nil {
+		return fmt.Errorf("failed to create incident message: %w", err)
 	}
 
-	ctx := context.Background()
-	fullErrorMessage := fmt.Sprintf("%s: %s", errorCode, errorMessage)
-	_, err := incidentsInterface.CreateBPMNErrorIncident(ctx, elementID, token.ProcessInstanceID, errorCode, fullErrorMessage)
+	// Send JSON message to incidents component through Core
+	err = jc.core.SendMessage("incidents", message)
 	if err != nil {
 		return fmt.Errorf("failed to create BPMN error incident: %w", err)
 	}
 
 	logger.Info("BPMN error incident created successfully",
+		logger.String("token_id", token.TokenID),
+		logger.String("element_id", elementID),
+		logger.String("error_code", errorCode),
+		logger.String("process_instance_id", token.ProcessInstanceID))
+
+	return nil
+}
+
+// createUnhandledBPMNErrorIncident creates incident for unhandled BPMN error (when no boundary event found)
+func (jc *JobCallbacks) createUnhandledBPMNErrorIncident(token *models.Token, elementID, errorCode, errorMessage string) error {
+	if jc.component == nil {
+		return fmt.Errorf("component not available")
+	}
+
+	if jc.core == nil {
+		return fmt.Errorf("core interface not available")
+	}
+
+	incidentsComp := jc.core.GetIncidentsComponent()
+	if incidentsComp == nil {
+		return fmt.Errorf("incidents component not available")
+	}
+
+	payload := incidents.CreateIncidentPayload{
+		Type:              "bpmn_error",
+		Message:           fmt.Sprintf("UNHANDLED_BPMN_ERROR %s: %s", errorCode, errorMessage),
+		ErrorCode:         errorCode,
+		ProcessInstanceID: token.ProcessInstanceID,
+		ElementID:         elementID,
+		ElementType:       "serviceTask", // Service task element type
+	}
+
+	message, err := incidents.CreateIncidentMessage(payload)
+	if err != nil {
+		return fmt.Errorf("failed to create incident message: %w", err)
+	}
+
+	// Send JSON message to incidents component through Core
+	err = jc.core.SendMessage("incidents", message)
+	if err != nil {
+		return fmt.Errorf("failed to create unhandled BPMN error incident: %w", err)
+	}
+
+	logger.Info("Unhandled BPMN error incident created successfully",
 		logger.String("token_id", token.TokenID),
 		logger.String("element_id", elementID),
 		logger.String("error_code", errorCode),

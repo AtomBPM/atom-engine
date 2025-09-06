@@ -147,6 +147,9 @@ func (t *Token) SetState(state TokenState) {
 // SetVariable sets token variable
 // Устанавливает переменную токена
 func (t *Token) SetVariable(key string, value interface{}) {
+	if t.Variables == nil {
+		t.Variables = make(map[string]interface{})
+	}
 	t.Variables[key] = value
 	t.UpdatedAt = time.Now()
 }
@@ -161,6 +164,9 @@ func (t *Token) GetVariable(key string) (interface{}, bool) {
 // SetVariables sets multiple token variables
 // Устанавливает множественные переменные токена
 func (t *Token) SetVariables(variables map[string]interface{}) {
+	if t.Variables == nil {
+		t.Variables = make(map[string]interface{})
+	}
 	for key, value := range variables {
 		t.Variables[key] = value
 	}
@@ -170,6 +176,9 @@ func (t *Token) SetVariables(variables map[string]interface{}) {
 // MergeVariables merges variables from another source
 // Объединяет переменные из другого источника
 func (t *Token) MergeVariables(variables map[string]interface{}) {
+	if t.Variables == nil {
+		t.Variables = make(map[string]interface{})
+	}
 	for key, value := range variables {
 		t.Variables[key] = value
 	}

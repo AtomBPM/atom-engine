@@ -185,6 +185,11 @@ func (htw *HierarchicalTimingWheel) proactiveCascade(now time.Time) {
 				if targetLevel != nil {
 					anchor, err := targetLevel.AddTimer(entry.Timer, entry.Handler, delta)
 					if err == nil && anchor != nil {
+						// Ensure Variables is initialized before assignment
+						// Убеждаемся что Variables инициализирован перед присваиванием
+						if entry.Timer.Variables == nil {
+							entry.Timer.Variables = make(map[string]interface{})
+						}
 						entry.Timer.Variables["_anchor"] = anchor
 						htw.timerIndex[entry.Timer.ID] = &TimerLocation{
 							Level: anchor.Level,

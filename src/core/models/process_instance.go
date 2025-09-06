@@ -79,6 +79,9 @@ func (pi *ProcessInstance) FromJSON(data []byte) error {
 // SetVariable sets process variable
 // Устанавливает переменную процесса
 func (pi *ProcessInstance) SetVariable(key string, value interface{}) {
+	if pi.Variables == nil {
+		pi.Variables = make(map[string]interface{})
+	}
 	pi.Variables[key] = value
 	pi.UpdatedAt = time.Now()
 }
@@ -93,6 +96,9 @@ func (pi *ProcessInstance) GetVariable(key string) (interface{}, bool) {
 // SetVariables sets multiple process variables
 // Устанавливает множественные переменные процесса
 func (pi *ProcessInstance) SetVariables(variables map[string]interface{}) {
+	if pi.Variables == nil {
+		pi.Variables = make(map[string]interface{})
+	}
 	for key, value := range variables {
 		pi.Variables[key] = value
 	}
@@ -123,6 +129,9 @@ func (pi *ProcessInstance) SetState(state ProcessInstanceState) {
 // AddMetadata adds metadata field
 // Добавляет поле метаданных
 func (pi *ProcessInstance) AddMetadata(key string, value interface{}) {
+	if pi.Metadata == nil {
+		pi.Metadata = make(map[string]interface{})
+	}
 	pi.Metadata[key] = value
 	pi.UpdatedAt = time.Now()
 }

@@ -34,6 +34,7 @@ type Storage interface {
 	LoadTimer(timerID string) (*TimerRecord, error)
 	LoadAllTimers() ([]*TimerRecord, error)
 	DeleteTimer(timerID string) error
+	UpdateTimer(timer *TimerRecord) error
 
 	// BPMN persistence methods
 	// Методы персистентности BPMN

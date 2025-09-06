@@ -23,6 +23,7 @@ const (
 	JobStatusCanceled    JobStatus = "CANCELED"
 	JobStatusDeferred    JobStatus = "DEFERRED"
 	JobStatusTransferred JobStatus = "TRANSFERRED"
+	JobStatusErrorThrown JobStatus = "ERROR_THROWN"
 )
 
 // Job represents a job in the system
@@ -86,7 +87,7 @@ func (j *Job) IsActive() bool {
 
 // IsCompleted checks if job is completed
 func (j *Job) IsCompleted() bool {
-	return j.Status == JobStatusCompleted || j.Status == JobStatusFailed || j.Status == JobStatusCanceled
+	return j.Status == JobStatusCompleted || j.Status == JobStatusFailed || j.Status == JobStatusCanceled || j.Status == JobStatusErrorThrown
 }
 
 // CanRetry checks if job can be retried
@@ -126,4 +127,18 @@ func (j *Job) MarkAsDeferred(scheduledAt time.Time) {
 	j.Status = JobStatusDeferred
 	j.ScheduledAt = &scheduledAt
 	j.UpdatedAt = time.Now()
+}
+
+// MarkAsErrorThrown marks job as completed with BPMN error
+func (j *Job) MarkAsErrorThrown(errorCode, errorMessage string) {
+	now := time.Now()
+	j.Status = JobStatusErrorThrown
+	j.ErrorMessage = errorMessage
+	j.CompletedAt = &now
+	j.UpdatedAt = now
+	if j.Metadata == nil {
+		j.Metadata = make(map[string]string)
+	}
+	j.Metadata["errorCode"] = errorCode
+	j.Metadata["completionType"] = "BPMN_ERROR"
 }

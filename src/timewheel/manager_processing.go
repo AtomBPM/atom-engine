@@ -143,6 +143,12 @@ func (m *Manager) processTimeDate(timer *models.Timer, dateStr string) error {
 	}
 
 	timer.DueDate = dueDate
+
+	// Ensure Variables is initialized before assignment
+	// Убеждаемся что Variables инициализирован перед присваиванием
+	if timer.Variables == nil {
+		timer.Variables = make(map[string]interface{})
+	}
 	timer.Variables["time_date"] = dateStr
 	return nil
 }
@@ -165,6 +171,12 @@ func (m *Manager) processTimeDuration(timer *models.Timer, durationStr string, b
 	}
 
 	timer.DueDate = startTime.Add(duration)
+
+	// Ensure Variables is initialized before assignment
+	// Убеждаемся что Variables инициализирован перед присваиванием
+	if timer.Variables == nil {
+		timer.Variables = make(map[string]interface{})
+	}
 	timer.Variables["time_duration"] = durationStr
 	return nil
 }
@@ -189,6 +201,12 @@ func (m *Manager) processTimeCycle(timer *models.Timer, cycleStr string, baseTim
 	// For first execution
 	// Для первого выполнения
 	timer.DueDate = startTime.Add(interval)
+
+	// Ensure Variables is initialized before assignment
+	// Убеждаемся что Variables инициализирован перед присваиванием
+	if timer.Variables == nil {
+		timer.Variables = make(map[string]interface{})
+	}
 	timer.Variables["time_cycle"] = cycleStr
 	timer.Variables["repeat_count"] = repeatCount
 	timer.Variables["interval"] = interval.String()
@@ -200,6 +218,12 @@ func (m *Manager) processTimeCycle(timer *models.Timer, cycleStr string, baseTim
 // addBoundaryTimerMetadata adds boundary timer specific metadata
 // Добавляет специфичные метаданные boundary таймера
 func (m *Manager) addBoundaryTimerMetadata(timer *models.Timer, req TimerRequest) {
+	// Ensure Variables is initialized before assignment
+	// Убеждаемся что Variables инициализирован перед присваиванием
+	if timer.Variables == nil {
+		timer.Variables = make(map[string]interface{})
+	}
+
 	if req.AttachedToRef != nil {
 		timer.Variables["attached_to_ref"] = *req.AttachedToRef
 	}

@@ -107,6 +107,18 @@ func (m *Manager) handleCycleTimer(timer *models.Timer, cycleStr string) error {
 		nextTimer.State = models.TimerStateScheduled
 		nextTimer.CreatedAt = time.Now()
 		nextTimer.UpdatedAt = time.Now()
+
+		// Ensure Variables is initialized before assignment
+		// Убеждаемся что Variables инициализирован перед присваиванием
+		if nextTimer.Variables == nil {
+			nextTimer.Variables = make(map[string]interface{})
+			// Copy original variables if they existed
+			if timer.Variables != nil {
+				for k, v := range timer.Variables {
+					nextTimer.Variables[k] = v
+				}
+			}
+		}
 		nextTimer.Variables["current_iteration"] = currentIteration + 1
 
 		// Clear anchor from previous timer

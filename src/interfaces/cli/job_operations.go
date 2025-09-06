@@ -23,7 +23,6 @@ import (
 // JobActivate activates jobs for a worker via gRPC
 // Активирует работы для воркера через gRPC
 func (d *DaemonCommand) JobActivate() error {
-	logger.Debug("Activating jobs")
 
 	if len(os.Args) < 5 {
 		logger.Error("Invalid job activate arguments", logger.Int("args_count", len(os.Args)))
@@ -68,12 +67,6 @@ func (d *DaemonCommand) JobActivate() error {
 			return fmt.Errorf("unknown flag: %s. Supported flags: -j (max_jobs), -t (timeout)", arg)
 		}
 	}
-
-	logger.Debug("Job activate request",
-		logger.String("job_type", jobType),
-		logger.String("worker", worker),
-		logger.Int("max_jobs", int(maxJobs)),
-		logger.Int("timeout", int(timeout)))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -133,7 +126,6 @@ func (d *DaemonCommand) JobActivate() error {
 // JobComplete completes a job via gRPC
 // Завершает работу через gRPC
 func (d *DaemonCommand) JobComplete() error {
-	logger.Debug("Completing job")
 
 	if len(os.Args) < 4 {
 		logger.Error("Invalid job complete arguments", logger.Int("args_count", len(os.Args)))
@@ -145,10 +137,6 @@ func (d *DaemonCommand) JobComplete() error {
 	if len(os.Args) > 4 {
 		variables = os.Args[4]
 	}
-
-	logger.Debug("Job complete request",
-		logger.String("job_key", jobKey),
-		logger.String("variables", variables))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -188,7 +176,6 @@ func (d *DaemonCommand) JobComplete() error {
 // JobFail fails a job via gRPC
 // Провальная работа через gRPC
 func (d *DaemonCommand) JobFail() error {
-	logger.Debug("Failing job")
 
 	if len(os.Args) < 5 {
 		logger.Error("Invalid job fail arguments", logger.Int("args_count", len(os.Args)))
@@ -206,11 +193,6 @@ func (d *DaemonCommand) JobFail() error {
 	if len(os.Args) > 5 {
 		errorMessage = os.Args[5]
 	}
-
-	logger.Debug("Job fail request",
-		logger.String("job_key", jobKey),
-		logger.Int("retries", retries),
-		logger.String("error_message", errorMessage))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -250,10 +232,9 @@ func (d *DaemonCommand) JobFail() error {
 	return nil
 }
 
-// JobThrowError throws error for job via gRPC  
+// JobThrowError throws error for job via gRPC
 // Выбрасывает ошибку для работы через gRPC
 func (d *DaemonCommand) JobThrowError() error {
-	logger.Debug("Throwing error for job")
 
 	if len(os.Args) < 5 {
 		logger.Error("Invalid job throw-error arguments", logger.Int("args_count", len(os.Args)))
@@ -262,7 +243,7 @@ func (d *DaemonCommand) JobThrowError() error {
 
 	jobKey := os.Args[3]
 	errorCode := os.Args[4]
-	
+
 	var errorMessage string
 	if len(os.Args) > 5 {
 		errorMessage = os.Args[5]
@@ -299,16 +280,25 @@ func (d *DaemonCommand) JobThrowError() error {
 
 	fmt.Printf("Job Error\n")
 	fmt.Printf("=========\n")
-	fmt.Printf("Job Key: %s\n", jobKey)
-	fmt.Printf("Error Code: %s\n", errorCode)
-	fmt.Printf("Error Message: %s\n", errorMessage)
 
 	if resp.Success {
+		fmt.Printf("Job Key: %s\n", jobKey)
+		fmt.Printf("Error Code: %s\n", errorCode)
+		fmt.Printf("Error Message: %s\n", errorMessage)
 		fmt.Printf("Status: %s\n", ColorizeOperationStatus("SUCCESS"))
 		fmt.Printf("Error thrown successfully - BPMN error boundary events will be activated\n")
 	} else {
-		fmt.Printf("Status: %s\n", ColorizeOperationStatus("FAILED"))
-		fmt.Printf("Error: %s\n", resp.ErrorMessage)
+		// Check if it's "job not found" error
+		if strings.Contains(resp.ErrorMessage, "job not found") {
+			fmt.Printf("%s - %s\n", colorize("JOB NOT FOUND", ColorBoldRed), jobKey)
+		} else {
+			// Show full details for other errors
+			fmt.Printf("Job Key: %s\n", jobKey)
+			fmt.Printf("Error Code: %s\n", errorCode)
+			fmt.Printf("Error Message: %s\n", errorMessage)
+			fmt.Printf("Status: %s\n", ColorizeOperationStatus("FAILED"))
+			fmt.Printf("Error: %s\n", resp.ErrorMessage)
+		}
 	}
 
 	return nil
@@ -317,7 +307,6 @@ func (d *DaemonCommand) JobThrowError() error {
 // JobCancel cancels a job via gRPC
 // Отменяет работу через gRPC
 func (d *DaemonCommand) JobCancel() error {
-	logger.Debug("Cancelling job")
 
 	if len(os.Args) < 4 {
 		logger.Error("Invalid job cancel arguments", logger.Int("args_count", len(os.Args)))
@@ -325,8 +314,6 @@ func (d *DaemonCommand) JobCancel() error {
 	}
 
 	jobKey := os.Args[3]
-
-	logger.Debug("Job cancel request", logger.String("job_key", jobKey))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {
@@ -365,7 +352,6 @@ func (d *DaemonCommand) JobCancel() error {
 // JobCreate creates a new job via gRPC
 // Создает новую работу через gRPC
 func (d *DaemonCommand) JobCreate() error {
-	logger.Debug("Creating job")
 
 	if len(os.Args) < 5 {
 		logger.Error("Invalid job create arguments", logger.Int("args_count", len(os.Args)))
@@ -378,11 +364,6 @@ func (d *DaemonCommand) JobCreate() error {
 	if len(os.Args) > 5 {
 		variables = os.Args[5]
 	}
-
-	logger.Debug("Job create request",
-		logger.String("job_type", jobType),
-		logger.String("process_instance_id", processInstanceID),
-		logger.String("variables", variables))
 
 	conn, err := d.grpcClient.Connect()
 	if err != nil {

@@ -11,8 +11,6 @@ package timewheel
 import (
 	"fmt"
 	"time"
-
-	"atom-engine/src/core/models"
 )
 
 // Manager manages timing wheel and handles JSON communication
@@ -104,33 +102,31 @@ func (m *Manager) GetRemainingTime(timerID string) (time.Duration, error) {
 // CancelTimer cancels timer by ID
 // Отменяет таймер по ID
 func (m *Manager) CancelTimer(timerID string) error {
-	// Load timer from storage to get anchor for wheel removal
-	// Загружаем timer из storage чтобы получить anchor для удаления из wheel
-	if m.storage == nil {
-		return fmt.Errorf("timer cancellation requires storage to load timer anchor")
+	// Try to remove timer from wheel by ID (using timerIndex lookup)
+	// Пытаемся удалить таймер из wheel по ID (используя поиск в timerIndex)
+	if err := m.wheel.RemoveTimerByID(timerID); err != nil {
+		// Timer not in wheel (possibly already fired or not scheduled)
+		// Just mark as cancelled in storage if available
+		// Таймер не в wheel (возможно уже сработал или не запланирован)
+		// Просто помечаем как отмененный в storage если доступен
+		if m.storage != nil {
+			timerRecord, loadErr := m.storage.LoadTimer(timerID)
+			if loadErr == nil {
+				timerRecord.State = "CANCELLED"
+				_ = m.storage.UpdateTimer(timerRecord)
+			}
+		}
+		return nil // Don't fail the operation
 	}
 
-	// Load timer record from storage
-	// Загружаем запись timer из storage
-	timerRecord, err := m.storage.LoadTimer(timerID)
-	if err != nil {
-		return fmt.Errorf("failed to load timer for cancellation: %w", err)
-	}
-
-	// Convert timer record to models.Timer with anchor
-	// Конвертируем запись timer в models.Timer с anchor
-	timer := &models.Timer{
-		ID:                timerRecord.ID,
-		ElementID:         timerRecord.ElementID,
-		ProcessInstanceID: timerRecord.ProcessInstanceID,
-		ExecutionTokenID:  timerRecord.TokenID,
-		Variables:         timerRecord.Variables,
-	}
-
-	// Remove timer from wheel using anchor
-	// Удаляем timer из wheel используя anchor
-	if err := m.wheel.RemoveTimer(timer); err != nil {
-		return fmt.Errorf("failed to remove timer from wheel: %w", err)
+	// Also mark as cancelled in storage
+	// Также помечаем как отмененный в storage
+	if m.storage != nil {
+		timerRecord, loadErr := m.storage.LoadTimer(timerID)
+		if loadErr == nil {
+			timerRecord.State = "CANCELLED"
+			_ = m.storage.UpdateTimer(timerRecord)
+		}
 	}
 
 	return nil

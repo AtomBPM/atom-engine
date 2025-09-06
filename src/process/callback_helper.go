@@ -74,19 +74,26 @@ func (ch *CallbackHelper) ProcessCallbackAndContinue(token *models.Token, elemen
 
 	// Cancel boundary timers when token leaves activity (Service Task, etc.)
 	// Отменяем boundary таймеры когда токен покидает activity (Service Task, и т.д.)
-	if token.HasBoundaryTimers() {
-		logger.Info("Canceling boundary timers for token leaving activity",
+	// Always try to cancel boundary timers regardless of token's boundary timer IDs
+	// since there might be synchronization issues between token and storage
+	// Всегда пытаемся отменить boundary таймеры независимо от boundary timer IDs токена
+	// поскольку может быть рассинхронизация между токеном и storage
+	logger.Info("Attempting to cancel boundary timers for token leaving activity",
+		logger.String("token_id", token.TokenID),
+		logger.String("element_id", elementID),
+		logger.Bool("token_has_boundary_timers", token.HasBoundaryTimers()),
+		logger.String("token_boundary_timer_ids", fmt.Sprintf("%v", token.GetBoundaryTimers())))
+
+	if err := ch.component.CancelBoundaryTimersForToken(token.TokenID); err != nil {
+		logger.Error("Failed to cancel boundary timers for token leaving activity",
 			logger.String("token_id", token.TokenID),
 			logger.String("element_id", elementID),
-			logger.Int("timer_count", len(token.GetBoundaryTimers())))
-
-		if err := ch.component.CancelBoundaryTimersForToken(token.TokenID); err != nil {
-			logger.Error("Failed to cancel boundary timers for token leaving activity",
-				logger.String("token_id", token.TokenID),
-				logger.String("element_id", elementID),
-				logger.String("error", err.Error()))
-			// Continue execution - boundary timer cancellation is not critical
-		}
+			logger.String("error", err.Error()))
+		// Continue execution - boundary timer cancellation is not critical
+	} else {
+		logger.Info("Boundary timer cancellation completed for token leaving activity",
+			logger.String("token_id", token.TokenID),
+			logger.String("element_id", elementID))
 	}
 
 	// Update token in storage first

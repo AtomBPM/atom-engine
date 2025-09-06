@@ -103,6 +103,33 @@ func (htw *HierarchicalTimingWheel) RemoveTimer(timer *models.Timer) error {
 	return htw.levels[anchor.Level].RemoveTimer(anchor)
 }
 
+// RemoveTimerByID removes timer by ID using index lookup
+// Удаляет таймер по ID используя поиск в индексе
+func (htw *HierarchicalTimingWheel) RemoveTimerByID(timerID string) error {
+	htw.mu.Lock()
+	defer htw.mu.Unlock()
+
+	// Find timer location in index
+	// Находим местоположение таймера в индексе
+	location, exists := htw.timerIndex[timerID]
+	if !exists {
+		return ErrTimerNotFound
+	}
+
+	// Remove from index
+	// Удаляем из индекса
+	delete(htw.timerIndex, timerID)
+
+	// Remove from level using direct slot access
+	// Удаляем из уровня используя прямой доступ к слоту
+	if location.Level >= len(htw.levels) {
+		return ErrInvalidAnchor
+	}
+
+	level := htw.levels[location.Level]
+	return level.RemoveTimerBySlotAndID(location.Slot, timerID)
+}
+
 // GetTimerLocation returns timer location in wheel
 // Возвращает местоположение таймера в колесе
 func (htw *HierarchicalTimingWheel) GetTimerLocation(timerID string) (*TimerLocation, bool) {

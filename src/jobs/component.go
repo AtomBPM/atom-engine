@@ -25,6 +25,7 @@ import (
 // Определяет методы core необходимые jobs компоненту
 type CoreInterface interface {
 	GetIncidentsComponent() interface{}
+	SendMessage(componentName, messageJSON string) error
 }
 
 // Component handles job management operations
@@ -119,43 +120,64 @@ func (c *Component) CreateIncident(incidentType, elementID, processInstanceID, j
 		return fmt.Errorf("incidents component not available")
 	}
 
-	// Type assertion to incidents component interface
-	type IncidentsInterface interface {
-		CreateJobFailureIncident(ctx context.Context, jobKey, elementID, processInstanceID, message string, retries int) (*incidents.Incident, error)
-		CreateBPMNErrorIncident(ctx context.Context, elementID, processInstanceID, errorCode, message string) (*incidents.Incident, error)
-	}
-
-	incidents, ok := incidentsComponent.(IncidentsInterface)
-	if !ok {
-		c.logger.Error("Failed to cast incidents component to interface")
-		return fmt.Errorf("failed to cast incidents component")
-	}
-
-	ctx := context.Background()
-	var err error
-
 	switch incidentType {
 	case "JOB_FAILURE":
-		_, err = incidents.CreateJobFailureIncident(ctx, jobKey, elementID, processInstanceID, errorMessage, retries)
+		payload := incidents.CreateIncidentPayload{
+			Type:              "job_failure",
+			Message:           errorMessage,
+			ProcessInstanceID: processInstanceID,
+			ElementID:         elementID,
+			ElementType:       "serviceTask",
+			JobKey:            jobKey,
+			JobType:           jobType,
+			WorkerID:          workerID,
+			OriginalRetries:   retries,
+		}
+
+		message, err := incidents.CreateIncidentMessage(payload)
 		if err != nil {
-			c.logger.Error("Failed to create job failure incident",
+			c.logger.Error("Failed to create job failure incident message",
+				logger.String("error", err.Error()))
+			return fmt.Errorf("failed to create job failure incident message: %w", err)
+		}
+
+		err = c.core.SendMessage("incidents", message)
+		if err != nil {
+			c.logger.Error("Failed to send job failure incident message",
 				logger.String("jobKey", jobKey),
 				logger.String("elementID", elementID),
 				logger.String("error", err.Error()))
-			return fmt.Errorf("failed to create job failure incident: %w", err)
+			return fmt.Errorf("failed to send job failure incident message: %w", err)
 		}
 		c.logger.Info("Job failure incident created successfully",
 			logger.String("jobKey", jobKey),
 			logger.String("elementID", elementID))
 
 	case "BPMN_ERROR":
-		_, err = incidents.CreateBPMNErrorIncident(ctx, elementID, processInstanceID, jobType, errorMessage)
+		payload := incidents.CreateIncidentPayload{
+			Type:              "bpmn_error",
+			Message:           errorMessage,
+			ErrorCode:         jobType, // jobType passed as errorCode for BPMN_ERROR
+			ProcessInstanceID: processInstanceID,
+			ElementID:         elementID,
+			ElementType:       "serviceTask",
+			JobKey:            jobKey,
+		}
+
+		message, err := incidents.CreateIncidentMessage(payload)
 		if err != nil {
-			c.logger.Error("Failed to create BPMN error incident",
+			c.logger.Error("Failed to create BPMN error incident message",
+				logger.String("error", err.Error()))
+			return fmt.Errorf("failed to create BPMN error incident message: %w", err)
+		}
+
+		err = c.core.SendMessage("incidents", message)
+		if err != nil {
+			c.logger.Error("Failed to send BPMN error incident message",
 				logger.String("jobKey", jobKey),
 				logger.String("elementID", elementID),
 				logger.String("error", err.Error()))
-			return fmt.Errorf("failed to create BPMN error incident: %w", err)
+			return fmt.Errorf("failed to send BPMN error incident message: %w", err)
 		}
 		c.logger.Info("BPMN error incident created successfully",
 			logger.String("jobKey", jobKey),
@@ -317,9 +339,19 @@ func (c *Component) ThrowError(jobKey string, errorCode, errorMessage string) er
 	return c.manager.ThrowError(context.Background(), jobKey, errorCode, errorMessage, nil)
 }
 
+// CompleteJobWithBPMNError completes job with BPMN error status
+func (c *Component) CompleteJobWithBPMNError(jobKey, errorCode, errorMessage string) error {
+	c.logger.Info("Completing job with BPMN error",
+		logger.String("jobKey", jobKey),
+		logger.String("errorCode", errorCode),
+		logger.String("errorMessage", errorMessage))
+
+	// Delegate to job manager
+	return c.manager.CompleteJobWithBPMNError(context.Background(), jobKey, errorCode, errorMessage)
+}
+
 // GetJobStats returns job statistics
 func (c *Component) GetJobStats() (interface{}, error) {
-	c.logger.Debug("Getting job stats")
 
 	// Get all jobs directly from manager
 	filter := &ListJobsFilter{
@@ -371,7 +403,6 @@ func (c *Component) GetJobStats() (interface{}, error) {
 
 // ListJobs lists jobs with filtering
 func (c *Component) ListJobs(jobType, worker, processInstanceID, state string, limit, offset int) ([]JobInfo, int, error) {
-	c.logger.Debug("Listing jobs", logger.String("type", jobType), logger.String("worker", worker))
 
 	// Create filter - ListJobsFilter is defined in manager.go
 	filter := &ListJobsFilter{
@@ -411,7 +442,6 @@ func (c *Component) ListJobs(jobType, worker, processInstanceID, state string, l
 
 // GetJob gets job by ID
 func (c *Component) GetJob(jobID string) (*JobInfo, error) {
-	c.logger.Debug("Getting job", logger.String("jobID", jobID))
 
 	// Delegate to job manager
 	job, err := c.manager.GetJob(context.Background(), jobID)
@@ -501,8 +531,6 @@ func (c *Component) ProcessMessage(ctx context.Context, messageJSON string) erro
 	if err := json.Unmarshal([]byte(messageJSON), &request); err != nil {
 		return fmt.Errorf("failed to parse job message: %w", err)
 	}
-
-	c.logger.Debug("Processing job message", logger.String("type", request.Type), logger.String("request_id", request.RequestID))
 
 	switch request.Type {
 	case "create_job":
@@ -803,9 +831,6 @@ func (c *Component) sendResponse(response JobResponse) error {
 		c.logger.Error("Failed to marshal job response", logger.String("error", err.Error()))
 		return fmt.Errorf("failed to marshal job response: %w", err)
 	}
-
-	c.logger.Debug("Sending job response", logger.String("type", response.Type), logger.String("request_id", response.RequestID))
-	c.logger.Debug("Job response JSON", logger.String("json", string(responseJSON)))
 
 	if c.responseChannel != nil {
 		select {

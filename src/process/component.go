@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"atom-engine/src/core/logger"
@@ -28,6 +29,8 @@ type CoreInterface interface {
 	GetMessagesComponent() interface{}           // Returns MessagesComponentInterface
 	GetExpressionComponent() interface{}         // Returns ExpressionComponentInterface
 	GetIncidentsComponent() interface{}          // Returns IncidentsComponentInterface
+	GetAuthComponent() interface{}               // Returns AuthComponentInterface
+	SendMessage(componentName, messageJSON string) error
 }
 
 // ComponentInterface defines process component interface (legacy compatibility)
@@ -61,6 +64,8 @@ type ComponentInterface interface {
 
 	// Job management
 	HandleJobCallback(jobID, elementID, tokenID, status, errorMessage string, variables map[string]interface{}) error
+	CancelJobForToken(tokenID string) error
+	CancelJobByID(jobID string) error
 
 	// Message management
 	HandleMessageCallback(messageID, messageName, correlationKey, tokenID string, variables map[string]interface{}) error
@@ -429,6 +434,40 @@ func (c *Component) DeleteGatewaySyncState(gatewayID, processInstanceID string) 
 
 func (c *Component) HandleJobCallback(jobID, elementID, tokenID, status, errorMessage string, variables map[string]interface{}) error {
 	return c.jobManager.HandleJobCallback(jobID, elementID, tokenID, status, errorMessage, variables)
+}
+
+func (c *Component) CancelJobForToken(tokenID string) error {
+	// Check if jobManager supports job cancellation via CancelJobForToken
+	if cancelMethod, ok := c.jobManager.(interface {
+		CancelJobForToken(tokenID string) error
+	}); ok {
+		return cancelMethod.CancelJobForToken(tokenID)
+	}
+
+	// Fallback: delegate to jobManager directly - caller is responsible for validation
+	if jobCallbacks, ok := c.jobManager.(*JobCallbacks); ok {
+		// Load token to get jobID
+		token, err := c.storage.LoadToken(tokenID)
+		if err != nil {
+			return fmt.Errorf("failed to load token %s: %w", tokenID, err)
+		}
+
+		if token.IsWaiting() && strings.HasPrefix(token.WaitingFor, "job:") {
+			jobID := strings.TrimPrefix(token.WaitingFor, "job:")
+			return jobCallbacks.cancelJob(jobID)
+		}
+	}
+
+	return nil
+}
+
+func (c *Component) CancelJobByID(jobID string) error {
+	// Direct job cancellation by ID - more efficient when jobID is already known
+	if jobCallbacks, ok := c.jobManager.(*JobCallbacks); ok {
+		return jobCallbacks.cancelJob(jobID)
+	}
+
+	return fmt.Errorf("job manager does not support job cancellation")
 }
 
 // MessageCallbackManagerInterface delegation
