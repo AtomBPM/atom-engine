@@ -75,3 +75,6 @@ coverage.out
 
 bpmn_test/
 .cursor/
+
+# Build versioning
+build_number.txt

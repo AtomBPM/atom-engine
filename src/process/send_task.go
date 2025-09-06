@@ -67,13 +67,13 @@ func (ste *SendTaskExecutor) Execute(token *models.Token, element map[string]int
 	// Extract message information from send_task section
 	// Извлекаем информацию о сообщении из секции send_task
 	messageName := ""
-	logger.Info("DEBUG: Send task element data", 
+	logger.Info("DEBUG: Send task element data",
 		logger.Any("element", element))
-	
+
 	if sendTaskData, exists := element["send_task"]; exists {
-		logger.Info("DEBUG: Found send_task data", 
+		logger.Info("DEBUG: Found send_task data",
 			logger.Any("send_task_data", sendTaskData))
-		
+
 		if sendTaskMap, ok := sendTaskData.(map[string]interface{}); ok {
 			if taskType, exists := sendTaskMap["task_type"]; exists {
 				if taskTypeStr, ok := taskType.(string); ok {
@@ -81,7 +81,7 @@ func (ste *SendTaskExecutor) Execute(token *models.Token, element map[string]int
 					logger.Info("Send task message name extracted from task_type",
 						logger.String("message_name", messageName))
 				} else {
-					logger.Warn("DEBUG: task_type is not string", 
+					logger.Warn("DEBUG: task_type is not string",
 						logger.Any("task_type", taskType))
 				}
 			} else {
@@ -131,7 +131,7 @@ func (ste *SendTaskExecutor) Execute(token *models.Token, element map[string]int
 		logger.String("message_name", messageName),
 		logger.String("correlation_key", correlationKey),
 		logger.Bool("has_process_component", ste.processComponent != nil))
-	
+
 	if ste.processComponent != nil && messageName != "" {
 		result, err := ste.processComponent.PublishMessageWithElementID(messageName, correlationKey, token.CurrentElementID, token.Variables)
 		if err != nil {
@@ -323,19 +323,209 @@ func (ste *SendTaskExecutor) findBoundaryEventsForActivity(activityID string, bp
 // createBoundaryTimerForEvent creates timer for boundary event if it has timer definition
 // Создает таймер для boundary события если у него есть timer определение
 func (ste *SendTaskExecutor) createBoundaryTimerForEvent(token *models.Token, eventID string, boundaryEvent map[string]interface{}) error {
-	// Implementation similar to ServiceTaskExecutor
-	// Реализация аналогична ServiceTaskExecutor
-	// For now, we'll use the same logic as service task
-	return nil // TODO: Implement boundary timer creation
+	// Check if this boundary event has timer definition
+	// Проверяем есть ли у данного boundary события timer определение
+	eventDefinitions, exists := boundaryEvent["event_definitions"]
+	if !exists {
+		return nil // No event definitions
+	}
+
+	eventDefList, ok := eventDefinitions.([]interface{})
+	if !ok {
+		return nil // Invalid event definitions format
+	}
+
+	for _, eventDef := range eventDefList {
+		eventDefMap, ok := eventDef.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Check if this is timer event definition
+		// Проверяем является ли это timer event определением
+		eventType, exists := eventDefMap["type"]
+		if !exists || eventType != "timerEventDefinition" {
+			continue
+		}
+
+		// Extract timer data
+		// Извлекаем timer данные
+		timerData, exists := eventDefMap["timer"]
+		if !exists {
+			continue
+		}
+
+		timerMap, ok := timerData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Create timer request
+		// Создаем запрос таймера
+		timerRequest := &TimerRequest{
+			ElementID:         eventID,
+			TokenID:           token.TokenID, // Parent token ID for boundary context
+			ProcessInstanceID: token.ProcessInstanceID,
+			ProcessKey:        token.ProcessKey,
+		}
+
+		// Set timer definition based on type with FEEL expression evaluation
+		// Устанавливаем timer определение в зависимости от типа с evaluation FEEL expressions
+		if duration, exists := timerMap["duration"]; exists {
+			if durationStr, ok := duration.(string); ok {
+				evaluatedDuration, err := ste.evaluateTimerExpression(durationStr, token)
+				if err != nil {
+					logger.Error("Failed to evaluate boundary timer duration expression",
+						logger.String("token_id", token.TokenID),
+						logger.String("expression", durationStr),
+						logger.String("error", err.Error()))
+					return fmt.Errorf("failed to evaluate boundary timer duration: %w", err)
+				}
+				evaluatedDurationStr := fmt.Sprintf("%v", evaluatedDuration)
+				timerRequest.TimeDuration = &evaluatedDurationStr
+				logger.Debug("Boundary timer duration evaluated",
+					logger.String("original", durationStr),
+					logger.String("evaluated", evaluatedDurationStr))
+			}
+		} else if cycle, exists := timerMap["cycle"]; exists {
+			if cycleStr, ok := cycle.(string); ok {
+				evaluatedCycle, err := ste.evaluateTimerExpression(cycleStr, token)
+				if err != nil {
+					logger.Error("Failed to evaluate boundary timer cycle expression",
+						logger.String("token_id", token.TokenID),
+						logger.String("expression", cycleStr),
+						logger.String("error", err.Error()))
+					return fmt.Errorf("failed to evaluate boundary timer cycle: %w", err)
+				}
+				evaluatedCycleStr := fmt.Sprintf("%v", evaluatedCycle)
+				timerRequest.TimeCycle = &evaluatedCycleStr
+				logger.Debug("Boundary timer cycle evaluated",
+					logger.String("original", cycleStr),
+					logger.String("evaluated", evaluatedCycleStr))
+			}
+		} else if date, exists := timerMap["date"]; exists {
+			if dateStr, ok := date.(string); ok {
+				evaluatedDate, err := ste.evaluateTimerExpression(dateStr, token)
+				if err != nil {
+					logger.Error("Failed to evaluate boundary timer date expression",
+						logger.String("token_id", token.TokenID),
+						logger.String("expression", dateStr),
+						logger.String("error", err.Error()))
+					return fmt.Errorf("failed to evaluate boundary timer date: %w", err)
+				}
+				evaluatedDateStr := fmt.Sprintf("%v", evaluatedDate)
+				timerRequest.TimeDate = &evaluatedDateStr
+				logger.Debug("Boundary timer date evaluated",
+					logger.String("original", dateStr),
+					logger.String("evaluated", evaluatedDateStr))
+			}
+		}
+
+		// Create boundary timer via process component
+		// Создаем boundary таймер через process компонент
+		timerID, err := ste.processComponent.CreateBoundaryTimerWithID(timerRequest)
+		if err != nil {
+			return fmt.Errorf("failed to create boundary timer: %w", err)
+		}
+
+		logger.Info("Boundary timer created for send task",
+			logger.String("parent_token_id", token.TokenID),
+			logger.String("timer_id", timerID),
+			logger.String("event_id", eventID),
+			logger.String("activity_id", token.CurrentElementID))
+
+		// Associate boundary timer with parent token
+		// Связываем boundary таймер с родительским токеном
+		if err := ste.processComponent.LinkBoundaryTimerToToken(token.TokenID, timerID); err != nil {
+			logger.Error("Failed to link boundary timer to token",
+				logger.String("parent_token_id", token.TokenID),
+				logger.String("timer_id", timerID),
+				logger.String("error", err.Error()))
+			// Continue execution - linking is not critical
+		}
+	}
+
+	return nil
 }
 
 // createErrorBoundaryForEvent creates error boundary subscription for specific event
 // Создает подписку на граничное событие ошибки для конкретного события
-func (ste *SendTaskExecutor) createErrorBoundaryForEvent(token *models.Token, eventID string, boundaryEvent interface{}, bpmnProcess map[string]interface{}) error {
-	// Implementation similar to ServiceTaskExecutor
-	// Реализация аналогична ServiceTaskExecutor
-	// For now, we'll use the same logic as service task
-	return nil // TODO: Implement error boundary creation
+func (ste *SendTaskExecutor) createErrorBoundaryForEvent(token *models.Token, eventID string, boundaryEvent interface{}, bpmnProcess interface{}) error {
+	boundaryEventMap, ok := boundaryEvent.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid boundary event structure")
+	}
+
+	// Check if this is an error boundary event
+	eventDefinitions, exists := boundaryEventMap["event_definitions"]
+	if !exists {
+		return nil // No event definitions - skip
+	}
+
+	eventDefList, ok := eventDefinitions.([]interface{})
+	if !ok {
+		return nil // Invalid event definitions structure - skip
+	}
+
+	// Look for errorEventDefinition
+	for _, eventDef := range eventDefList {
+		eventDefMap, ok := eventDef.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		eventType, exists := eventDefMap["type"]
+		if !exists || eventType != "errorEventDefinition" {
+			continue // Not an error event definition
+		}
+
+		// This is an error boundary event - create subscription
+		logger.Info("Creating error boundary subscription for send task",
+			logger.String("token_id", token.TokenID),
+			logger.String("event_id", eventID),
+			logger.String("activity_id", token.CurrentElementID))
+
+		// Extract error reference and resolve error code
+		errorCode, errorName := ste.extractErrorInfo(eventDefMap, bpmnProcess)
+
+		// Check if this boundary event is interrupting
+		cancelActivity := true // Default is interrupting
+		if cancelActivityAttr, exists := boundaryEventMap["cancel_activity"]; exists {
+			if cancelActivityBool, ok := cancelActivityAttr.(bool); ok {
+				cancelActivity = cancelActivityBool
+			} else if cancelActivityStr, ok := cancelActivityAttr.(string); ok {
+				cancelActivity = cancelActivityStr != "false"
+			}
+		}
+
+		// Get outgoing sequence flows from boundary event
+		outgoingFlows := ste.getOutgoingFlows(boundaryEventMap)
+
+		// Create error boundary subscription
+		subscription := &ErrorBoundarySubscription{
+			TokenID:        token.TokenID,
+			ElementID:      eventID,
+			AttachedToRef:  token.CurrentElementID,
+			ErrorRef:       "", // ErrorRef extraction not implemented
+			ErrorCode:      errorCode,
+			ErrorName:      errorName,
+			CancelActivity: cancelActivity,
+			OutgoingFlows:  outgoingFlows,
+		}
+
+		// Register error boundary subscription
+		ste.processComponent.RegisterErrorBoundary(subscription)
+
+		logger.Info("Error boundary subscription created for send task",
+			logger.String("token_id", token.TokenID),
+			logger.String("event_id", eventID),
+			logger.String("error_code", errorCode),
+			logger.Bool("cancel_activity", cancelActivity))
+
+		return nil
+	}
+
+	return nil // No error event definition found
 }
 
 // getMessageNameByReference gets message name by reference ID
@@ -379,4 +569,139 @@ func (ste *SendTaskExecutor) getMessageNameByReference(messageRef string, token 
 	}
 
 	return ""
+}
+
+// extractErrorInfo extracts error code and name from error event definition
+// Извлекает код ошибки и имя из определения события ошибки
+func (ste *SendTaskExecutor) extractErrorInfo(eventDef map[string]interface{}, bpmnProcess interface{}) (string, string) {
+	// Get error reference from event definition
+	errorRef, exists := eventDef["reference"] // Changed from "error_ref" to "reference"
+	if !exists {
+		return "GENERAL_ERROR", "General Error"
+	}
+
+	errorRefStr, ok := errorRef.(string)
+	if !ok {
+		return "GENERAL_ERROR", "General Error"
+	}
+
+	// Get the complete BPMN structure with all elements
+	bpmnProcessMap, ok := bpmnProcess.(map[string]interface{})
+	if !ok {
+		return "GENERAL_ERROR", "General Error"
+	}
+
+	// Look for the error definition in the elements map (not error_definitions array)
+	if elements, exists := bpmnProcessMap["elements"]; exists {
+		if elementsMap, ok := elements.(map[string]interface{}); ok {
+			// Look for the specific error element by ID
+			if errorElement, exists := elementsMap[errorRefStr]; exists {
+				if errorDefMap, ok := errorElement.(map[string]interface{}); ok {
+					errorCode := "GENERAL_ERROR"
+					errorName := "General Error"
+
+					// Extract error_code from the error element
+					if code, exists := errorDefMap["error_code"]; exists {
+						if codeStr, ok := code.(string); ok {
+							errorCode = codeStr
+						}
+					}
+
+					// Extract name from the error element
+					if name, exists := errorDefMap["name"]; exists {
+						if nameStr, ok := name.(string); ok {
+							errorName = nameStr
+						}
+					}
+
+					logger.Info("Resolved error definition from elements for send task",
+						logger.String("error_ref", errorRefStr),
+						logger.String("error_code", errorCode),
+						logger.String("error_name", errorName))
+
+					return errorCode, errorName
+				}
+			}
+		}
+	}
+
+	logger.Warn("Could not resolve error definition for send task, using default",
+		logger.String("error_ref", errorRefStr))
+	return "GENERAL_ERROR", "General Error"
+}
+
+// getOutgoingFlows extracts outgoing sequence flows from boundary event
+// Извлекает исходящие потоки последовательности из граничного события
+func (ste *SendTaskExecutor) getOutgoingFlows(boundaryEvent map[string]interface{}) []string {
+	outgoing, exists := boundaryEvent["outgoing"]
+	if !exists {
+		return []string{}
+	}
+
+	var flows []string
+	if outgoingList, ok := outgoing.([]interface{}); ok {
+		for _, item := range outgoingList {
+			if flowID, ok := item.(string); ok {
+				flows = append(flows, flowID)
+			}
+		}
+	} else if outgoingStr, ok := outgoing.(string); ok {
+		flows = append(flows, outgoingStr)
+	}
+
+	return flows
+}
+
+// evaluateTimerExpression evaluates timer expressions using expression component
+// Вычисляет timer expressions используя expression компонент
+func (ste *SendTaskExecutor) evaluateTimerExpression(expression string, token *models.Token) (interface{}, error) {
+	// If not a FEEL expression (doesn't start with =), return as is
+	// Если не FEEL expression (не начинается с =), возвращаем как есть
+	if expression == "" || expression[0] != '=' {
+		return expression, nil
+	}
+
+	// Get expression component through process component
+	// Получаем expression компонент через process компонент
+	if ste.processComponent == nil {
+		return nil, fmt.Errorf("process component not available for expression evaluation")
+	}
+
+	// Get core interface
+	core := ste.processComponent.GetCore()
+	if core == nil {
+		return nil, fmt.Errorf("core interface not available for expression evaluation")
+	}
+
+	// Get expression component
+	expressionCompInterface := core.GetExpressionComponent()
+	if expressionCompInterface == nil {
+		return nil, fmt.Errorf("expression component not available")
+	}
+
+	// Cast to expression evaluator interface with EvaluateExpressionEngine method
+	// Приводим к интерфейсу expression evaluator с методом EvaluateExpressionEngine
+	type ExpressionEvaluator interface {
+		EvaluateExpressionEngine(expression interface{}, variables map[string]interface{}) (interface{}, error)
+	}
+
+	expressionComp, ok := expressionCompInterface.(ExpressionEvaluator)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast expression component to ExpressionEvaluator interface")
+	}
+
+	// Evaluate FEEL expression using expression engine
+	// Вычисляем FEEL expression используя expression engine
+	result, err := expressionComp.EvaluateExpressionEngine(expression, token.Variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate FEEL expression '%s': %w", expression, err)
+	}
+
+	logger.Debug("Boundary timer expression evaluated successfully for send task",
+		logger.String("token_id", token.TokenID),
+		logger.String("original_expression", expression),
+		logger.Any("evaluated_result", result),
+		logger.Any("token_variables", token.Variables))
+
+	return result, nil
 }

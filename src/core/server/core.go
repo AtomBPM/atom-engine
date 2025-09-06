@@ -11,6 +11,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"atom-engine/src/core/models"
 	"atom-engine/src/core/restapi"
 	"atom-engine/src/core/restapi/handlers"
+	"atom-engine/src/core/system"
 	"atom-engine/src/core/types"
 	"atom-engine/src/expression"
 	"atom-engine/src/incidents"
@@ -32,6 +34,7 @@ import (
 	"atom-engine/src/process"
 	"atom-engine/src/storage"
 	"atom-engine/src/timewheel"
+	"atom-engine/src/version"
 )
 
 // Core manages all system components
@@ -510,21 +513,27 @@ func (c *Core) GetSystemStatus() (*types.SystemStatus, error) {
 // GetSystemInfo returns system information
 // Возвращает информацию о системе
 func (c *Core) GetSystemInfo() (*types.SystemInfo, error) {
+	// Get real hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown" // Fallback if hostname cannot be determined
+	}
+
 	hostInfo := types.HostInfo{
-		Hostname:     "atom-engine-node", // TODO: get real hostname
+		Hostname:     hostname, // Use real hostname
 		OS:           runtime.GOOS,
 		Architecture: runtime.GOARCH,
 		CPUCores:     int32(runtime.NumCPU()),
-		MemoryTotal:  0, // TODO: get real memory info
-		DiskTotal:    0, // TODO: get real disk info
+		MemoryTotal:  system.GetTotalMemory(),     // Use real total memory
+		DiskTotal:    system.GetSystemDiskSpace(), // Use real disk space
 	}
 
 	return &types.SystemInfo{
 		Name:          "Atom Engine",
-		Version:       "1.0.0",       // TODO: get from build info
-		BuildTime:     time.Now(),    // TODO: get real build time
-		GitCommit:     "",            // TODO: get from build info
-		Environment:   "development", // TODO: get from config
+		Version:       version.Version,        // Use real version from build info
+		BuildTime:     version.GetBuildTime(), // Use real build time
+		GitCommit:     version.GitCommit,      // Use real git commit
+		Environment:   "development",          // TODO: get from config
 		StartedAt:     c.startTime,
 		Uptime:        time.Since(c.startTime),
 		HostInfo:      hostInfo,

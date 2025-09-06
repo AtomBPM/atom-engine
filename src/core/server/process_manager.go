@@ -158,10 +158,10 @@ func (a *processComponentAdapter) StartProcessInstanceTyped(processKey string, v
 
 	return &types.ProcessInstanceDetails{
 		InstanceID:          instance.InstanceID,
-		ProcessKey:          processKey, // Use the key from request
+		ProcessKey:          instance.ProcessKey, // Use actual process key from instance
 		ProcessDefinitionID: instance.ProcessID,
-		Version:             1,                         // TODO: get from instance when available
-		Status:              types.ProcessStatusActive, // Convert from instance.State
+		Version:             int32(instance.ProcessVersion), // Use actual version from instance
+		Status:              types.ProcessStatusActive,      // Convert from instance.State
 		Variables:           variables,
 		StartedAt:           instance.StartedAt,
 		UpdatedAt:           now,
@@ -173,6 +173,7 @@ func (a *processComponentAdapter) StartProcessInstanceTyped(processKey string, v
 		ErrorMessage:        "", // TODO: get from instance errors
 		Metadata: map[string]interface{}{
 			"original_variables": legacyVars,
+			"process_key":        instance.ProcessKey,
 		},
 	}, nil
 }
@@ -197,6 +198,20 @@ func (a *processComponentAdapter) GetProcessInstanceStatusTyped(instanceID strin
 		activeTokens = []*models.Token{} // Default to empty
 	}
 
+	// Get all tokens for completed count
+	allTokens, err := a.comp.GetTokensByProcessInstance(instanceID)
+	if err != nil {
+		allTokens = []*models.Token{} // Default to empty
+	}
+
+	// Count completed tokens
+	completedCount := 0
+	for _, token := range allTokens {
+		if token.IsCompleted() {
+			completedCount++
+		}
+	}
+
 	var duration *time.Duration
 	if instance.CompletedAt != nil {
 		d := instance.CompletedAt.Sub(instance.StartedAt)
@@ -205,9 +220,9 @@ func (a *processComponentAdapter) GetProcessInstanceStatusTyped(instanceID strin
 
 	return &types.ProcessInstanceDetails{
 		InstanceID:          instance.InstanceID,
-		ProcessKey:          "", // TODO: get from instance
+		ProcessKey:          instance.ProcessKey, // Use actual process key from instance
 		ProcessDefinitionID: instance.ProcessID,
-		Version:             1, // TODO: get from instance
+		Version:             int32(instance.ProcessVersion), // Use actual version from instance
 		Status:              types.ProcessStatus(instance.State),
 		Variables:           variables,
 		StartedAt:           instance.StartedAt,
@@ -216,10 +231,11 @@ func (a *processComponentAdapter) GetProcessInstanceStatusTyped(instanceID strin
 		Duration:            duration,
 		CurrentActivity:     instance.CurrentActivity,
 		ActiveTokens:        int32(len(activeTokens)),
-		CompletedTokens:     0,  // TODO: calculate completed tokens
-		ErrorMessage:        "", // TODO: get error message
+		CompletedTokens:     int32(completedCount), // Use real completed tokens count
+		ErrorMessage:        "",                    // TODO: get error message
 		Metadata: map[string]interface{}{
 			"legacy_state": instance.State,
+			"process_key":  instance.ProcessKey,
 		},
 	}, nil
 }
@@ -265,9 +281,9 @@ func (a *processComponentAdapter) ListProcessInstancesTyped(req *types.ProcessLi
 
 		typedInstance := types.ProcessInstanceDetails{
 			InstanceID:          instance.InstanceID,
-			ProcessKey:          "", // TODO: get from instance
+			ProcessKey:          instance.ProcessKey, // Use actual process key from instance
 			ProcessDefinitionID: instance.ProcessID,
-			Version:             1, // TODO: get from instance
+			Version:             int32(instance.ProcessVersion), // Use actual version from instance
 			Status:              types.ProcessStatus(instance.State),
 			Variables:           variables,
 			StartedAt:           instance.StartedAt,

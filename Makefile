@@ -7,10 +7,27 @@ COPY_ENV_FILE ?= true
 GOPATH_BIN := $(shell go env GOPATH)/bin
 export PATH := $(PATH):$(GOPATH_BIN)
 
+# Build variables
+BASE_VERSION := $(shell cat version.txt 2>/dev/null || echo "dev")
+BUILD_NUMBER_FILE := build_number.txt
+CURRENT_BUILD := $(shell cat $(BUILD_NUMBER_FILE) 2>/dev/null || echo "0")
+NEW_BUILD := $(shell expr $(CURRENT_BUILD) + 1)
+VERSION := $(BASE_VERSION).$(NEW_BUILD)
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+
 # Build the application (assumes proto files already exist)
 build:
 	@echo "Building atom engine..."
-	go build -o build/atomd .
+	@echo "Base version: $(BASE_VERSION)"
+	@echo "Current build: $(CURRENT_BUILD)"
+	@echo "New build: $(NEW_BUILD)"
+	@echo "Full version: $(VERSION)"
+	@echo "Git commit: $(GIT_COMMIT)"
+	@echo "Build time: $(BUILD_TIME)"
+	@echo "Incrementing build number..."
+	@echo $(NEW_BUILD) > $(BUILD_NUMBER_FILE)
+	go build -ldflags "-X atom-engine/src/version.Version=$(VERSION) -X atom-engine/src/version.GitCommit=$(GIT_COMMIT) -X atom-engine/src/version.BuildTime=$(BUILD_TIME)" -o build/atomd .
 	@echo "Creating build directories..."
 	mkdir -p build/config
 	mkdir -p build/data/base
@@ -116,6 +133,25 @@ proto:
 	@echo "Protobuf generation completed"
 
 # Show help
+# Reset build number to 0
+reset-build:
+	@echo "Resetting build number to 0..."
+	@echo "0" > $(BUILD_NUMBER_FILE)
+	@echo "Build number reset to 0"
+
+# Set base version (usage: make set-version VERSION=1.2)
+set-version:
+	@echo "Setting base version to $(VERSION)..."
+	@echo "$(VERSION)" > version.txt
+	@echo "Base version set to $(VERSION)"
+
+# Show current version info
+version-info:
+	@echo "Base Version: $(BASE_VERSION)"
+	@echo "Current Build: $(CURRENT_BUILD)"
+	@echo "Next Build: $(NEW_BUILD)"
+	@echo "Full Version: $(VERSION)"
+
 help:
 	@echo "Atom Engine Build System"
 	@echo "======================="
@@ -128,6 +164,11 @@ help:
 	@echo "Development commands:"
 	@echo "  make proto       - Generate all protobuf files"
 	@echo "  make deps        - Install/update dependencies"
+	@echo ""
+	@echo "Version commands:"
+	@echo "  make version-info - Show current version information"
+	@echo "  make set-version  - Set base version (usage: make set-version VERSION=1.2)"
+	@echo "  make reset-build  - Reset build number to 0"
 	@echo ""
 	@echo "Cleanup commands:"
 	@echo "  make clean       - Remove build artifacts"

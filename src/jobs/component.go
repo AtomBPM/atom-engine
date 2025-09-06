@@ -321,22 +321,41 @@ func (c *Component) ThrowError(jobKey string, errorCode, errorMessage string) er
 func (c *Component) GetJobStats() (interface{}, error) {
 	c.logger.Debug("Getting job stats")
 
-	// Calculate real statistics using ListJobs
-	allJobs, totalJobs, err := c.ListJobs("", "", "", "", 10000, 0) // Get all jobs
+	// Get all jobs directly from manager
+	filter := &ListJobsFilter{
+		Limit:            10000, // Get all jobs
+		Offset:           0,
+		IncludeVariables: false, // Don't need variables for stats
+	}
+
+	allJobs, totalJobs, err := c.manager.ListJobs(context.Background(), filter)
 	if err != nil {
 		c.logger.Error("Failed to get jobs for stats", logger.String("error", err.Error()))
 		return &JobStats{TotalJobs: 0, ActiveJobs: 0, CompletedJobs: 0, FailedJobs: 0}, nil
 	}
 
-	var activeJobs, completedJobs, failedJobs int32
+	// Get today's date for comparison
+	today := time.Now().Format("2006-01-02")
+
+	var activeJobs, completedJobs, failedJobs, activatedToday, completedToday int32
 	for _, job := range allJobs {
 		switch job.Status {
-		case "PENDING", "RUNNING":
+		case models.JobStatusPending, models.JobStatusRunning:
 			activeJobs++
-		case "COMPLETED":
+		case models.JobStatusCompleted:
 			completedJobs++
-		case "FAILED":
+		case models.JobStatusFailed:
 			failedJobs++
+		}
+
+		// Count jobs activated (created) today
+		if job.CreatedAt.Format("2006-01-02") == today {
+			activatedToday++
+		}
+
+		// Count jobs completed today
+		if job.CompletedAt != nil && job.CompletedAt.Format("2006-01-02") == today {
+			completedToday++
 		}
 	}
 
@@ -345,8 +364,8 @@ func (c *Component) GetJobStats() (interface{}, error) {
 		ActiveJobs:     activeJobs,
 		CompletedJobs:  completedJobs,
 		FailedJobs:     failedJobs,
-		ActivatedToday: 0, // Daily counts not implemented
-		CompletedToday: 0,
+		ActivatedToday: activatedToday, // Use real activated today count
+		CompletedToday: completedToday, // Use real completed today count
 	}, nil
 }
 

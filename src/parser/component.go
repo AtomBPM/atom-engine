@@ -419,7 +419,12 @@ func (c *Component) GetBPMNStats() (*BPMNStats, error) {
 		TotalProcesses: len(allProcesses),
 		ElementCounts:  make(map[string]int),
 		StatusCounts:   make(map[string]int),
+		ParsedToday:    0,
 	}
+
+	// Get today's date for comparison
+	// Получаем сегодняшнюю дату для сравнения
+	today := time.Now().Format("2006-01-02")
 
 	// Calculate detailed statistics
 	// Подсчет детальной статистики
@@ -443,6 +448,12 @@ func (c *Component) GetBPMNStats() (*BPMNStats, error) {
 		// Track total elements
 		// Отслеживание общего количества элементов
 		stats.TotalElements += bpmnProcess.GetTotalElements()
+
+		// Count processes parsed today
+		// Подсчет процессов парсированных сегодня
+		if bpmnProcess.ParsedAt.Format("2006-01-02") == today {
+			stats.ParsedToday++
+		}
 	}
 
 	return stats, nil
@@ -550,6 +561,7 @@ type BPMNStats struct {
 	TotalElements  int            `json:"total_elements"`
 	ElementCounts  map[string]int `json:"element_counts"`
 	StatusCounts   map[string]int `json:"status_counts"`
+	ParsedToday    int            `json:"parsed_today"`
 }
 
 // ProcessMessage processes JSON message from core engine
@@ -660,13 +672,15 @@ func (c *Component) handleValidateBPMN(ctx context.Context, request ParserReques
 		return c.sendResponse(response)
 	}
 
-	// Simple validation - try to parse
+	// Validation by parsing - validates XML structure and BPMN elements
 	var err error
 	if payload.FilePath != "" {
 		_, err = c.ParseBPMNFile(payload.FilePath, "", false)
+	} else if payload.BPMNContent != "" {
+		// Use existing ParseBPMNContent for content validation
+		_, err = c.ParseBPMNContent(payload.BPMNContent, "", false)
 	} else {
-		// Content validation not implemented
-		err = fmt.Errorf("content validation not implemented")
+		err = fmt.Errorf("neither file path nor content provided for validation")
 	}
 
 	validationResult := ValidationResult{
@@ -795,10 +809,10 @@ func (c *Component) handleGetStats(ctx context.Context, request ParserRequest) e
 		statsResult := ParserStatsResult{
 			TotalProcesses:       stats.TotalProcesses,
 			ActiveProcesses:      stats.StatusCounts["active"],
-			ParsedToday:          0, // Today count not implemented
-			LastParseTime:        0, // Last parse time not implemented
-			AverageElementsCount: 0, // Average calculation not implemented
-			ParseErrors:          0, // Parse error tracking not implemented
+			ParsedToday:          stats.ParsedToday, // Use real parsed today count
+			LastParseTime:        0,                 // Last parse time not implemented
+			AverageElementsCount: 0,                 // Average calculation not implemented
+			ParseErrors:          0,                 // Parse error tracking not implemented
 		}
 		if stats.TotalProcesses > 0 {
 			statsResult.AverageElementsCount = stats.TotalElements / stats.TotalProcesses
