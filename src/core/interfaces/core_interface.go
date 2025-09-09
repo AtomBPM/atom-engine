@@ -93,6 +93,10 @@ type CoreTypedInterface interface {
 	// Строго типизированные результаты операций
 	ExecuteOperation(operationName string, params types.Variables) (*types.OperationResult, error)
 	ExecuteBatchOperation(operations []string, params []types.Variables) (*types.BatchOperationResult, error)
+
+	// gRPC connection access for REST handlers
+	// Доступ к gRPC соединению для REST обработчиков
+	GetGRPCConnection() (interface{}, error)
 }
 
 // StorageStatusResponse represents storage status

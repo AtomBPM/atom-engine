@@ -77,6 +77,7 @@ type Server struct {
 	storageHandler    *handlers.StorageHandler
 	parserHandler     *handlers.ParserHandler
 	processHandler    *handlers.ProcessHandler
+	tokensHandler     *handlers.TokensHandler
 	timerHandler      *handlers.TimerHandler
 	jobsHandler       *handlers.JobsHandler
 	messagesHandler   *handlers.MessagesHandler
@@ -212,6 +213,7 @@ func (s *Server) setupHandlers() {
 	s.storageHandler = handlers.NewStorageHandler(s.coreInterface)
 	s.parserHandler = handlers.NewParserHandler(s.coreInterface)
 	s.processHandler = handlers.NewProcessHandler(s.coreInterface)
+	s.tokensHandler = handlers.NewTokensHandler(s.coreInterface)
 	s.timerHandler = handlers.NewTimerHandler(s.coreInterface)
 	s.jobsHandler = handlers.NewJobsHandler(s.coreInterface)
 	s.messagesHandler = handlers.NewMessagesHandler(s.coreInterface)
@@ -286,6 +288,7 @@ func (s *Server) setupRoutes() {
 		s.storageHandler.RegisterRoutes(v1, s.authMiddleware)
 		s.parserHandler.RegisterRoutes(v1, s.authMiddleware)
 		s.processHandler.RegisterRoutes(v1, s.authMiddleware)
+		s.tokensHandler.RegisterRoutes(v1, s.authMiddleware)
 		s.timerHandler.RegisterRoutes(v1, s.authMiddleware)
 		s.jobsHandler.RegisterRoutes(v1, s.authMiddleware)
 		s.messagesHandler.RegisterRoutes(v1, s.authMiddleware)

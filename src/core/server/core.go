@@ -61,6 +61,10 @@ type Core struct {
 	// Дополнительные поля для реализации typed интерфейса
 	startTime      time.Time
 	isShuttingDown bool
+
+	// Message Multiplexer for jobs component
+	// Message Multiplexer для jobs компонента
+	jobsMultiplexer MessageMultiplexerInterface
 }
 
 // NewCore creates new core instance
@@ -244,6 +248,23 @@ func (c *Core) SendMessage(componentName, messageJSON string) error {
 	return processor.ProcessMessage(context.Background(), messageJSON)
 }
 
+// GetGRPCConnection returns gRPC connection for direct calls
+// Возвращает gRPC соединение для прямых вызовов
+func (c *Core) GetGRPCConnection() (interface{}, error) {
+	if c.grpcServer == nil {
+		return nil, fmt.Errorf("gRPC server is not available")
+	}
+
+	// Return a loopback connection to the gRPC server
+	// Возвращаем loopback соединение к gRPC серверу
+	conn, err := c.grpcServer.GetLoopbackConnection()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gRPC loopback connection: %w", err)
+	}
+
+	return conn, nil
+}
+
 // REST API interface implementations
 // Реализации интерфейсов для REST API
 
@@ -379,6 +400,29 @@ func (c *Core) WaitForParserResponse(timeoutMs int) (string, error) {
 // WaitForJobsResponse waits for jobs response with timeout
 // Ожидает ответ от jobs компонента с таймаутом
 func (c *Core) WaitForJobsResponse(timeoutMs int) (string, error) {
+	// Use Message Multiplexer if available
+	// Используем Message Multiplexer если доступен
+	if c.jobsMultiplexer != nil && c.jobsMultiplexer.IsRunning() {
+		responseChannel := c.jobsMultiplexer.GetAPIResponseChannel()
+		if responseChannel == nil {
+			return "", fmt.Errorf("jobs API response channel not available")
+		}
+
+		logger.Debug("Waiting for jobs API response via multiplexer", logger.Int("timeout_ms", timeoutMs))
+		timeout := time.Duration(timeoutMs) * time.Millisecond
+		select {
+		case response := <-responseChannel:
+			logger.Debug("Received jobs API response via multiplexer",
+				logger.String("response_length", fmt.Sprintf("%d", len(response))))
+			return response, nil
+		case <-time.After(timeout):
+			logger.Warn("Jobs API response timeout via multiplexer", logger.Int("timeout_ms", timeoutMs))
+			return "", fmt.Errorf("timeout waiting for jobs API response after %dms", timeoutMs)
+		}
+	}
+
+	// Fallback to direct channel access (for backwards compatibility)
+	// Резервный прямой доступ к каналу (для обратной совместимости)
 	if c.jobsComp == nil {
 		return "", fmt.Errorf("jobs component not available")
 	}
@@ -388,14 +432,15 @@ func (c *Core) WaitForJobsResponse(timeoutMs int) (string, error) {
 		return "", fmt.Errorf("jobs response channel not available")
 	}
 
-	logger.Debug("Waiting for jobs response", logger.Int("timeout_ms", timeoutMs))
+	logger.Debug("Waiting for jobs response (direct channel)", logger.Int("timeout_ms", timeoutMs))
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 	select {
 	case response := <-responseChannel:
-		logger.Debug("Received jobs response", logger.String("response_length", fmt.Sprintf("%d", len(response))))
+		logger.Debug("Received jobs response (direct channel)",
+			logger.String("response_length", fmt.Sprintf("%d", len(response))))
 		return response, nil
 	case <-time.After(timeout):
-		logger.Warn("Jobs response timeout", logger.Int("timeout_ms", timeoutMs))
+		logger.Warn("Jobs response timeout (direct channel)", logger.Int("timeout_ms", timeoutMs))
 		return "", fmt.Errorf("timeout waiting for jobs response after %dms", timeoutMs)
 	}
 }

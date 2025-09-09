@@ -120,6 +120,14 @@ func (c *Core) Start() error {
 		return fmt.Errorf("failed to start jobs component: %w", err)
 	}
 
+	// Initialize and start Jobs Message Multiplexer
+	// Инициализируем и запускаем Jobs Message Multiplexer
+	err = c.initializeJobsMultiplexer()
+	if err != nil {
+		logger.Error("Failed to initialize jobs message multiplexer", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to initialize jobs message multiplexer: %w", err)
+	}
+
 	// Initialize and start messages component
 	// Инициализируем и запускаем messages компонент
 	err = c.messagesComp.Start()
@@ -201,7 +209,14 @@ func (c *Core) Start() error {
 
 	// Start jobs response processor
 	// Запускаем обработчик ответов jobs
-	go c.processJobsResponses()
+
+	// Jobs responses are now handled by Message Multiplexer
+	// Job callbacks will be processed separately from API responses
+	// Ответы Jobs теперь обрабатываются Message Multiplexer'ом
+	// Job callbacks будут обрабатываться отдельно от API ответов
+	if c.jobsMultiplexer != nil && c.jobsMultiplexer.IsRunning() {
+		go c.processJobCallbacks()
+	}
 
 	// Start messages response processor
 	// Запускаем обработчик ответов messages
@@ -297,6 +312,13 @@ func (c *Core) Stop() error {
 		} else {
 			logger.Info("Messages component stopped")
 		}
+	}
+
+	// Stop jobs message multiplexer first
+	// Сначала останавливаем jobs message multiplexer
+	err = c.stopJobsMultiplexer()
+	if err != nil {
+		logger.Error("Failed to stop jobs message multiplexer", logger.String("error", err.Error()))
 	}
 
 	// Stop jobs component

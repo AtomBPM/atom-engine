@@ -61,6 +61,15 @@ type FailJobPayload struct {
 	RetryBackoff int64  `json:"retry_backoff,omitempty"`
 }
 
+// ThrowErrorPayload payload for throwing BPMN error for a job
+// Payload для выброса BPMN ошибки для job'а
+type ThrowErrorPayload struct {
+	JobKey       string                 `json:"job_key"`
+	ErrorCode    string                 `json:"error_code"`
+	ErrorMessage string                 `json:"error_message,omitempty"`
+	Variables    map[string]interface{} `json:"variables,omitempty"`
+}
+
 // CancelJobPayload payload for canceling a job
 // Payload для отмены job'а
 type CancelJobPayload struct {
@@ -89,6 +98,13 @@ type GetJobPayload struct {
 type UpdateJobRetriesPayload struct {
 	JobKey     string `json:"job_key"`
 	NewRetries int    `json:"new_retries"`
+}
+
+// UpdateJobTimeoutPayload payload for updating job timeout
+// Payload для обновления timeout job'а
+type UpdateJobTimeoutPayload struct {
+	JobKey    string `json:"job_key"`
+	TimeoutMs int64  `json:"timeout_ms"`
 }
 
 // JobResult result structure for job operations

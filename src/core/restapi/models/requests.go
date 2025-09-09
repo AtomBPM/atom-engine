@@ -117,6 +117,21 @@ type ListJobsRequest struct {
 	PaginationParams
 }
 
+// UpdateJobRetriesRequest represents job retries update request
+type UpdateJobRetriesRequest struct {
+	Retries int32 `json:"retries" binding:"required,min=0,max=100"`
+}
+
+// CancelJobRequest represents job cancellation request
+type CancelJobRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// UpdateJobTimeoutRequest represents job timeout update request
+type UpdateJobTimeoutRequest struct {
+	TimeoutMs int64 `json:"timeout_ms" binding:"required,min=1000,max=86400000"` // 1 second to 24 hours
+}
+
 // Message Management Requests
 
 // PublishMessageRequest represents message publishing request
@@ -245,6 +260,40 @@ func (r *AddTimerRequest) Validate() error {
 func (r *PublishMessageRequest) Validate() error {
 	if r.MessageName == "" {
 		return BadRequestError("message_name is required")
+	}
+	return nil
+}
+
+func (r *FailJobRequest) Validate() error {
+	if r.Retries < 0 {
+		return BadRequestError("retries cannot be negative")
+	}
+	return nil
+}
+
+func (r *ThrowErrorRequest) Validate() error {
+	if r.ErrorCode == "" {
+		return BadRequestError("error_code is required")
+	}
+	return nil
+}
+
+func (r *UpdateJobRetriesRequest) Validate() error {
+	if r.Retries < 0 {
+		return BadRequestError("retries cannot be negative")
+	}
+	if r.Retries > 100 {
+		return BadRequestError("retries cannot exceed 100")
+	}
+	return nil
+}
+
+func (r *UpdateJobTimeoutRequest) Validate() error {
+	if r.TimeoutMs < 1000 {
+		return BadRequestError("timeout must be at least 1000ms (1 second)")
+	}
+	if r.TimeoutMs > 86400000 {
+		return BadRequestError("timeout cannot exceed 86400000ms (24 hours)")
 	}
 	return nil
 }

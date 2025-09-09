@@ -23,9 +23,9 @@ import (
 	"atom-engine/proto/messages/messagespb"
 	"atom-engine/proto/parser/parserpb"
 	"atom-engine/proto/process/processpb"
-	"atom-engine/src/core/interfaces"
 	"atom-engine/proto/timewheel/timewheelpb"
 	"atom-engine/src/core/auth"
+	"atom-engine/src/core/interfaces"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
 )
@@ -174,4 +174,22 @@ func (s *Server) Stop() error {
 // Возвращает статус готовности сервера
 func (s *Server) IsReady() bool {
 	return s.grpcServer != nil && s.listener != nil
+}
+
+// GetLoopbackConnection returns a loopback gRPC connection to this server
+// Возвращает loopback gRPC соединение к этому серверу
+func (s *Server) GetLoopbackConnection() (*grpc.ClientConn, error) {
+	if !s.IsReady() {
+		return nil, fmt.Errorf("gRPC server is not ready")
+	}
+
+	// Create a connection to localhost on the server port
+	// Создаем соединение к localhost на порту сервера
+	target := fmt.Sprintf("localhost:%d", s.port)
+	conn, err := grpc.Dial(target, grpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create loopback connection to %s: %w", target, err)
+	}
+
+	return conn, nil
 }

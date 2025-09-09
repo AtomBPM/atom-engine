@@ -541,10 +541,14 @@ func (c *Component) ProcessMessage(ctx context.Context, messageJSON string) erro
 		return c.handleCompleteJob(ctx, request)
 	case "fail_job":
 		return c.handleFailJob(ctx, request)
+	case "throw_error":
+		return c.handleThrowError(ctx, request)
 	case "cancel_job":
 		return c.handleCancelJob(ctx, request)
 	case "update_job_retries":
 		return c.handleUpdateJobRetries(ctx, request)
+	case "update_job_timeout":
+		return c.handleUpdateJobTimeout(ctx, request)
 	case "list_jobs":
 		return c.handleListJobs(ctx, request)
 	case "get_job":
@@ -669,6 +673,37 @@ func (c *Component) handleFailJob(ctx context.Context, request JobRequest) error
 	return c.sendResponse(response)
 }
 
+// handleThrowError handles job error throwing request
+// Обрабатывает запрос выброса ошибки job'а
+func (c *Component) handleThrowError(ctx context.Context, request JobRequest) error {
+	var payload ThrowErrorPayload
+	if err := mapToStruct(request.Payload, &payload); err != nil {
+		response := CreateJobErrorResponse("throw_error_response", request.RequestID, fmt.Sprintf("invalid payload: %v", err))
+		return c.sendResponse(response)
+	}
+
+	c.logger.Info("Throwing error for job",
+		logger.String("job_key", payload.JobKey),
+		logger.String("error_code", payload.ErrorCode))
+
+	err := c.manager.ThrowJobError(ctx, payload.JobKey, payload.ErrorCode, payload.ErrorMessage, payload.Variables)
+
+	var response JobResponse
+	if err != nil {
+		response = CreateJobErrorResponse("throw_error_response", request.RequestID, err.Error())
+	} else {
+		result := JobResult{
+			JobKey:    payload.JobKey,
+			Success:   true,
+			Message:   "BPMN error thrown successfully",
+			Timestamp: time.Now().Unix(),
+		}
+		response = CreateJobResponse("throw_error_response", request.RequestID, result)
+	}
+
+	return c.sendResponse(response)
+}
+
 // handleCancelJob handles job cancellation request
 // Обрабатывает запрос отмены job'а
 func (c *Component) handleCancelJob(ctx context.Context, request JobRequest) error {
@@ -722,6 +757,38 @@ func (c *Component) handleUpdateJobRetries(ctx context.Context, request JobReque
 			Timestamp: time.Now().Unix(),
 		}
 		response = CreateJobResponse("update_job_retries_response", request.RequestID, result)
+	}
+
+	return c.sendResponse(response)
+}
+
+// handleUpdateJobTimeout handles job timeout update request
+// Обрабатывает запрос обновления таймаута job'а
+func (c *Component) handleUpdateJobTimeout(ctx context.Context, request JobRequest) error {
+	var payload UpdateJobTimeoutPayload
+	if err := mapToStruct(request.Payload, &payload); err != nil {
+		response := CreateJobErrorResponse("update_job_timeout_response", request.RequestID, fmt.Sprintf("invalid payload: %v", err))
+		return c.sendResponse(response)
+	}
+
+	c.logger.Info("Updating job timeout",
+		logger.String("job_key", payload.JobKey),
+		logger.Int64("new_timeout_ms", payload.TimeoutMs))
+
+	timeout := time.Duration(payload.TimeoutMs) * time.Millisecond
+	err := c.manager.UpdateJobTimeout(ctx, payload.JobKey, timeout)
+
+	var response JobResponse
+	if err != nil {
+		response = CreateJobErrorResponse("update_job_timeout_response", request.RequestID, err.Error())
+	} else {
+		result := JobResult{
+			JobKey:    payload.JobKey,
+			Success:   true,
+			Message:   fmt.Sprintf("Job timeout updated to %d ms", payload.TimeoutMs),
+			Timestamp: time.Now().Unix(),
+		}
+		response = CreateJobResponse("update_job_timeout_response", request.RequestID, result)
 	}
 
 	return c.sendResponse(response)

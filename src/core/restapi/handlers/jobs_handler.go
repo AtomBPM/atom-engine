@@ -94,8 +94,12 @@ func (h *JobsHandler) RegisterRoutes(router *gin.RouterGroup, authMiddleware *mi
 		jobs.GET("/:key", h.GetJob)
 		jobs.POST("/activate", h.ActivateJobs)
 		jobs.PUT("/:key/complete", h.CompleteJob)
-		// Note: Additional job endpoints are available through gRPC interface
-		// For job failure, cancellation, retries, and stats use: atomd job <command>
+		jobs.PUT("/:key/fail", h.FailJob)
+		jobs.POST("/:key/throw-error", h.ThrowError)
+		jobs.PUT("/:key/retries", h.UpdateJobRetries)
+		jobs.DELETE("/:key", h.CancelJob)
+		jobs.PUT("/:key/timeout", h.UpdateJobTimeout)
+		jobs.GET("/stats", h.GetJobStats)
 	}
 }
 
@@ -522,6 +526,515 @@ func (h *JobsHandler) CompleteJob(c *gin.Context) {
 		logger.String("job_key", jobKey))
 
 	c.JSON(http.StatusOK, models.SuccessResponse(updateResp, requestID))
+}
+
+// FailJob handles PUT /api/v1/jobs/:key/fail
+// @Summary Fail job
+// @Description Mark a job as failed with retry information
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param key path string true "Job key"
+// @Param request body models.FailJobRequest true "Job failure request"
+// @Success 200 {object} models.APIResponse{data=models.SuccessResponse}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 404 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/jobs/{key}/fail [put]
+func (h *JobsHandler) FailJob(c *gin.Context) {
+	requestID := h.getRequestID(c)
+	jobKey := c.Param("key")
+
+	// Parse request body
+	var req models.FailJobRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Failed to parse fail job request",
+			logger.String("request_id", requestID),
+			logger.String("job_key", jobKey),
+			logger.String("error", err.Error()))
+
+		apiErr := models.BadRequestError("Invalid request body: " + err.Error())
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		if apiErr, ok := err.(*models.APIError); ok {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		} else {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(models.BadRequestError(err.Error()), requestID))
+		}
+		return
+	}
+
+	logger.Debug("Failing job",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey),
+		logger.Int("retries", int(req.Retries)))
+
+	// Create fail job request
+	failReq := map[string]interface{}{
+		"type":       "fail_job",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_key":       jobKey,
+			"retries":       req.Retries,
+			"error_message": req.ErrorMessage,
+			"backoff_ms":    req.BackoffMs,
+		},
+	}
+
+	// Send to jobs component
+	response, err := h.sendJobsRequest(failReq, requestID)
+	if err != nil {
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if success, ok := response["success"].(bool); !ok || !success {
+		message := "Job failure operation failed"
+		if msg, exists := response["message"].(string); exists {
+			message = msg
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Info("Job failed successfully",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey))
+
+	successResp := &models.UpdateResponse{
+		ID:      jobKey,
+		Message: "Job failed successfully",
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(successResp, requestID))
+}
+
+// ThrowError handles POST /api/v1/jobs/:key/throw-error
+// @Summary Throw BPMN error for job
+// @Description Throw a BPMN error for a job that will trigger error handling
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param key path string true "Job key"
+// @Param request body models.ThrowErrorRequest true "Error throwing request"
+// @Success 200 {object} models.APIResponse{data=models.SuccessResponse}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 404 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/jobs/{key}/throw-error [post]
+func (h *JobsHandler) ThrowError(c *gin.Context) {
+	requestID := h.getRequestID(c)
+	jobKey := c.Param("key")
+
+	// Parse request body
+	var req models.ThrowErrorRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Failed to parse throw error request",
+			logger.String("request_id", requestID),
+			logger.String("job_key", jobKey),
+			logger.String("error", err.Error()))
+
+		apiErr := models.BadRequestError("Invalid request body: " + err.Error())
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		if apiErr, ok := err.(*models.APIError); ok {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		} else {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(models.BadRequestError(err.Error()), requestID))
+		}
+		return
+	}
+
+	logger.Debug("Throwing error for job",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey),
+		logger.String("error_code", req.ErrorCode))
+
+	// Create throw error request
+	throwReq := map[string]interface{}{
+		"type":       "throw_error",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_key":       jobKey,
+			"error_code":    req.ErrorCode,
+			"error_message": req.ErrorMessage,
+			"variables":     req.Variables,
+		},
+	}
+
+	// Send to jobs component
+	response, err := h.sendJobsRequest(throwReq, requestID)
+	if err != nil {
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if success, ok := response["success"].(bool); !ok || !success {
+		message := "Error throwing operation failed"
+		if msg, exists := response["message"].(string); exists {
+			message = msg
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Info("Error thrown for job successfully",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey),
+		logger.String("error_code", req.ErrorCode))
+
+	successResp := &models.UpdateResponse{
+		ID:      jobKey,
+		Message: "BPMN error thrown successfully",
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(successResp, requestID))
+}
+
+// UpdateJobRetries handles PUT /api/v1/jobs/:key/retries
+// @Summary Update job retries
+// @Description Update the number of retries for a job
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param key path string true "Job key"
+// @Param request body models.UpdateJobRetriesRequest true "Job retries update request"
+// @Success 200 {object} models.APIResponse{data=models.SuccessResponse}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 404 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/jobs/{key}/retries [put]
+func (h *JobsHandler) UpdateJobRetries(c *gin.Context) {
+	requestID := h.getRequestID(c)
+	jobKey := c.Param("key")
+
+	// Parse request body
+	var req models.UpdateJobRetriesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Failed to parse update retries request",
+			logger.String("request_id", requestID),
+			logger.String("job_key", jobKey),
+			logger.String("error", err.Error()))
+
+		apiErr := models.BadRequestError("Invalid request body: " + err.Error())
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		if apiErr, ok := err.(*models.APIError); ok {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		} else {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(models.BadRequestError(err.Error()), requestID))
+		}
+		return
+	}
+
+	logger.Debug("Updating job retries",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey),
+		logger.Int("retries", int(req.Retries)))
+
+	// Create update retries request
+	updateReq := map[string]interface{}{
+		"type":       "update_job_retries",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_key": jobKey,
+			"retries": req.Retries,
+		},
+	}
+
+	// Send to jobs component
+	response, err := h.sendJobsRequest(updateReq, requestID)
+	if err != nil {
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if success, ok := response["success"].(bool); !ok || !success {
+		message := "Job retries update failed"
+		if msg, exists := response["message"].(string); exists {
+			message = msg
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Info("Job retries updated successfully",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey))
+
+	successResp := &models.UpdateResponse{
+		ID:      jobKey,
+		Message: "Job retries updated successfully",
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(successResp, requestID))
+}
+
+// CancelJob handles DELETE /api/v1/jobs/:key
+// @Summary Cancel job
+// @Description Cancel a job with optional reason
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param key path string true "Job key"
+// @Param request body models.CancelJobRequest false "Job cancellation request"
+// @Success 200 {object} models.APIResponse{data=models.SuccessResponse}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 404 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/jobs/{key} [delete]
+func (h *JobsHandler) CancelJob(c *gin.Context) {
+	requestID := h.getRequestID(c)
+	jobKey := c.Param("key")
+
+	// Parse optional request body
+	var req models.CancelJobRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Body is optional for DELETE, ignore bind errors
+		req = models.CancelJobRequest{}
+	}
+
+	logger.Debug("Cancelling job",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey),
+		logger.String("reason", req.Reason))
+
+	// Create cancel job request
+	cancelReq := map[string]interface{}{
+		"type":       "cancel_job",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_key": jobKey,
+			"reason":  req.Reason,
+		},
+	}
+
+	// Send to jobs component
+	response, err := h.sendJobsRequest(cancelReq, requestID)
+	if err != nil {
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if success, ok := response["success"].(bool); !ok || !success {
+		message := "Job cancellation failed"
+		if msg, exists := response["message"].(string); exists {
+			message = msg
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Info("Job cancelled successfully",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey))
+
+	successResp := &models.DeleteResponse{
+		ID:      jobKey,
+		Message: "Job cancelled successfully",
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(successResp, requestID))
+}
+
+// UpdateJobTimeout handles PUT /api/v1/jobs/:key/timeout
+// @Summary Update job timeout
+// @Description Update the timeout for a job
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param key path string true "Job key"
+// @Param request body models.UpdateJobTimeoutRequest true "Job timeout update request"
+// @Success 200 {object} models.APIResponse{data=models.SuccessResponse}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 404 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/jobs/{key}/timeout [put]
+func (h *JobsHandler) UpdateJobTimeout(c *gin.Context) {
+	requestID := h.getRequestID(c)
+	jobKey := c.Param("key")
+
+	// Parse request body
+	var req models.UpdateJobTimeoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Failed to parse update timeout request",
+			logger.String("request_id", requestID),
+			logger.String("job_key", jobKey),
+			logger.String("error", err.Error()))
+
+		apiErr := models.BadRequestError("Invalid request body: " + err.Error())
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		if apiErr, ok := err.(*models.APIError); ok {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		} else {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(models.BadRequestError(err.Error()), requestID))
+		}
+		return
+	}
+
+	logger.Debug("Updating job timeout",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey),
+		logger.Int64("timeout_ms", req.TimeoutMs))
+
+	// Create update timeout request
+	updateReq := map[string]interface{}{
+		"type":       "update_job_timeout",
+		"request_id": requestID,
+		"payload": map[string]interface{}{
+			"job_key":    jobKey,
+			"timeout_ms": req.TimeoutMs,
+		},
+	}
+
+	// Send to jobs component
+	response, err := h.sendJobsRequest(updateReq, requestID)
+	if err != nil {
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if success, ok := response["success"].(bool); !ok || !success {
+		message := "Job timeout update failed"
+		if msg, exists := response["message"].(string); exists {
+			message = msg
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Info("Job timeout updated successfully",
+		logger.String("request_id", requestID),
+		logger.String("job_key", jobKey))
+
+	successResp := &models.UpdateResponse{
+		ID:      jobKey,
+		Message: "Job timeout updated successfully",
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(successResp, requestID))
+}
+
+// GetJobStats handles GET /api/v1/jobs/stats
+// @Summary Get job statistics
+// @Description Get comprehensive job statistics
+// @Tags jobs
+// @Produce json
+// @Success 200 {object} models.APIResponse{data=JobStats}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/jobs/stats [get]
+func (h *JobsHandler) GetJobStats(c *gin.Context) {
+	requestID := h.getRequestID(c)
+
+	logger.Debug("Getting job statistics",
+		logger.String("request_id", requestID))
+
+	// Create get stats request
+	statsReq := map[string]interface{}{
+		"type":       "get_stats",
+		"request_id": requestID,
+		"payload":    map[string]interface{}{},
+	}
+
+	// Send to jobs component
+	response, err := h.sendJobsRequest(statsReq, requestID)
+	if err != nil {
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Parse stats from response
+	stats := &JobStats{
+		TotalJobs:        0,
+		ActiveJobs:       0,
+		CompletedJobs:    0,
+		FailedJobs:       0,
+		JobsByType:       make(map[string]int64),
+		JobsByWorker:     make(map[string]int64),
+		AverageLatency:   0.0,
+		ThroughputPerMin: 0,
+	}
+
+	// Extract stats from response
+	if statsData, exists := response["stats"]; exists {
+		if statsMap, ok := statsData.(map[string]interface{}); ok {
+			if totalJobs, ok := statsMap["total_jobs"].(float64); ok {
+				stats.TotalJobs = int64(totalJobs)
+			}
+			if activeJobs, ok := statsMap["active_jobs"].(float64); ok {
+				stats.ActiveJobs = int64(activeJobs)
+			}
+			if completedJobs, ok := statsMap["completed_jobs"].(float64); ok {
+				stats.CompletedJobs = int64(completedJobs)
+			}
+			if failedJobs, ok := statsMap["failed_jobs"].(float64); ok {
+				stats.FailedJobs = int64(failedJobs)
+			}
+		}
+	}
+
+	logger.Info("Job statistics retrieved",
+		logger.String("request_id", requestID),
+		logger.Int64("total_jobs", stats.TotalJobs))
+
+	c.JSON(http.StatusOK, models.SuccessResponse(stats, requestID))
 }
 
 // Helper methods

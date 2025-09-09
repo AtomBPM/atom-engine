@@ -621,6 +621,74 @@ func (jm *JobManager) UpdateJobTimeout(ctx context.Context, jobID string, timeou
 	return nil
 }
 
+// ThrowJobError throws a BPMN error for a job
+func (jm *JobManager) ThrowJobError(ctx context.Context, jobID, errorCode, errorMessage string, variables map[string]interface{}) error {
+	jm.logger.Info("Throwing BPMN error for job",
+		logger.String("jobID", jobID),
+		logger.String("errorCode", errorCode))
+
+	job, err := jm.storage.GetJob(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to get job: %w", err)
+	}
+
+	if job == nil {
+		return fmt.Errorf("job not found: %s", jobID)
+	}
+
+	// Update job status to ERROR_THROWN
+	job.Status = models.JobStatusErrorThrown
+	job.ErrorMessage = fmt.Sprintf("BPMN Error %s: %s", errorCode, errorMessage)
+
+	// Merge variables if provided
+	if variables != nil {
+		if job.Variables == nil {
+			job.Variables = make(map[string]interface{})
+		}
+		for k, v := range variables {
+			job.Variables[k] = v
+		}
+	}
+
+	// Add error metadata
+	job.Variables["__error_code"] = errorCode
+	job.Variables["__error_message"] = errorMessage
+
+	// Save updated job
+	err = jm.storage.SaveJob(ctx, job)
+	if err != nil {
+		return fmt.Errorf("failed to save job after error: %w", err)
+	}
+
+	// Send error callback to process component via response channel
+	if jm.component != nil {
+		errorCallback := fmt.Sprintf(
+			`{"type":"bpmn_error","job_id":"%s","element_id":"%s","token_id":"%s","error_code":"%s","error_message":"%s","variables":%s}`,
+			jobID, job.ElementID, job.TokenID, errorCode, errorMessage,
+			jm.marshalVariables(job.Variables))
+
+		jm.component.SendJobCallback(errorCallback)
+	}
+
+	jm.logger.Info("BPMN error thrown for job", logger.String("jobID", jobID))
+	return nil
+}
+
+// Helper method to marshal variables safely
+func (jm *JobManager) marshalVariables(variables map[string]interface{}) string {
+	if variables == nil {
+		return "{}"
+	}
+
+	jsonBytes, err := json.Marshal(variables)
+	if err != nil {
+		jm.logger.Warn("Failed to marshal job variables", logger.String("error", err.Error()))
+		return "{}"
+	}
+
+	return string(jsonBytes)
+}
+
 // registerWorker registers or updates worker information
 func (jm *JobManager) registerWorker(workerID, jobType string, maxJobs int, timeout time.Duration) {
 	jm.mutex.Lock()

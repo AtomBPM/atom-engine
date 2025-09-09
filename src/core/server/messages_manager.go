@@ -54,7 +54,7 @@ func (c *Core) handleMessagesResponse(response string) {
 		ProcessInstanceID string                 `json:"process_instance_id"`
 		Variables         map[string]interface{} `json:"variables"`
 		CorrelatedAt      string                 `json:"correlated_at"`
-		EventType         string                 `json:"event_type"` // "correlation", "subscription_created", etc.
+		EventType         string                 `json:"event_type"`
 	}
 
 	if err := json.Unmarshal([]byte(response), &messageResp); err == nil {

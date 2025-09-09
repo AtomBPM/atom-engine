@@ -9,6 +9,7 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,9 +17,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
 
+	"atom-engine/proto/parser/parserpb"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/restapi/middleware"
 	"atom-engine/src/core/restapi/models"
@@ -37,6 +41,8 @@ type ParserCoreInterface interface {
 	// JSON Message Routing to parser component
 	SendMessage(componentName, messageJSON string) error
 	WaitForParserResponse(timeoutMs int) (string, error)
+	// gRPC connection for direct calls
+	GetGRPCConnection() (interface{}, error)
 }
 
 // BPMN response types
@@ -85,8 +91,9 @@ func (h *ParserHandler) RegisterRoutes(router *gin.RouterGroup, authMiddleware *
 		bpmn.POST("/parse", h.ParseBPMN)
 		bpmn.GET("/processes", h.ListProcesses)
 		bpmn.GET("/processes/:key", h.GetProcess)
-		// Note: Additional BPMN endpoints are available through CLI interface
-		// For process details, deletion, JSON export, and stats use: atomd bpmn <command>
+		bpmn.DELETE("/processes/:id", h.DeleteBPMNProcess)
+		bpmn.GET("/processes/:key/json", h.GetBPMNProcessJSON)
+		bpmn.GET("/stats", h.GetBPMNStats)
 	}
 }
 
@@ -416,4 +423,288 @@ func (h *ParserHandler) getRequestID(c *gin.Context) string {
 		return requestID
 	}
 	return utils.GenerateSecureRequestID("parser")
+}
+
+// DeleteBPMNProcess handles DELETE /api/v1/bpmn/processes/:id
+// @Summary Delete BPMN process
+// @Description Delete a BPMN process by process ID
+// @Tags bpmn
+// @Produce json
+// @Param id path string true "Process ID"
+// @Success 200 {object} models.APIResponse{data=models.DeleteResponse}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 404 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/bpmn/processes/{id} [delete]
+func (h *ParserHandler) DeleteBPMNProcess(c *gin.Context) {
+	requestID := h.getRequestID(c)
+	processID := c.Param("id")
+
+	if processID == "" {
+		apiErr := models.BadRequestError("Process ID is required")
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Debug("Deleting BPMN process",
+		logger.String("request_id", requestID),
+		logger.String("process_id", processID))
+
+	// Get gRPC client
+	client, conn, err := h.getParserGRPCClient()
+	if err != nil {
+		logger.Error("Failed to get Parser gRPC client",
+			logger.String("request_id", requestID),
+			logger.String("error", err.Error()))
+
+		apiErr := models.InternalServerError("Parser service not available")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+	defer conn.Close()
+
+	// Create gRPC context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Call gRPC DeleteBPMNProcess method
+	grpcReq := &parserpb.DeleteBPMNProcessRequest{
+		ProcessId: processID,
+	}
+
+	resp, err := client.DeleteBPMNProcess(ctx, grpcReq)
+	if err != nil {
+		logger.Error("Failed to delete BPMN process via gRPC",
+			logger.String("request_id", requestID),
+			logger.String("process_id", processID),
+			logger.String("error", err.Error()))
+
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if !resp.Success {
+		message := "BPMN process deletion failed"
+		if resp.Message != "" {
+			message = resp.Message
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Info("BPMN process deleted successfully",
+		logger.String("request_id", requestID),
+		logger.String("process_id", processID))
+
+	deleteResp := &models.DeleteResponse{
+		ID:      processID,
+		Message: "BPMN process deleted successfully",
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(deleteResp, requestID))
+}
+
+// GetBPMNStats handles GET /api/v1/bpmn/stats
+// @Summary Get BPMN statistics
+// @Description Get statistics about BPMN parsing and processes
+// @Tags bpmn
+// @Produce json
+// @Success 200 {object} models.APIResponse{data=BPMNStats}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/bpmn/stats [get]
+func (h *ParserHandler) GetBPMNStats(c *gin.Context) {
+	requestID := h.getRequestID(c)
+
+	logger.Debug("Getting BPMN stats",
+		logger.String("request_id", requestID))
+
+	// Get gRPC client
+	client, conn, err := h.getParserGRPCClient()
+	if err != nil {
+		logger.Error("Failed to get Parser gRPC client",
+			logger.String("request_id", requestID),
+			logger.String("error", err.Error()))
+
+		apiErr := models.InternalServerError("Parser service not available")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+	defer conn.Close()
+
+	// Create gRPC context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Call gRPC GetBPMNStats method
+	grpcReq := &parserpb.GetBPMNStatsRequest{}
+
+	resp, err := client.GetBPMNStats(ctx, grpcReq)
+	if err != nil {
+		logger.Error("Failed to get BPMN stats via gRPC",
+			logger.String("request_id", requestID),
+			logger.String("error", err.Error()))
+
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if !resp.Success {
+		message := "Failed to get BPMN stats"
+		if resp.Message != "" {
+			message = resp.Message
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Convert gRPC response to REST API format
+	stats := &BPMNStats{
+		TotalProcesses:   resp.TotalProcesses,
+		ActiveProcesses:  resp.ActiveProcesses,
+		TotalElements:    resp.TotalElementsParsed,
+		ParseSuccessRate: float64(resp.SuccessfulElements) / float64(resp.TotalElementsParsed) * 100,
+		LastParsed:       0, // Convert from string if needed
+	}
+
+	// Convert element counts from map[string]int32 to map[string]int32
+	if resp.ElementTypeCounts != nil {
+		stats.ElementsByType = make(map[string]int32)
+		for k, v := range resp.ElementTypeCounts {
+			stats.ElementsByType[k] = v
+		}
+	}
+
+	// Add processes by type placeholder
+	stats.ProcessesByType = make(map[string]int32)
+	stats.ProcessesByType["total"] = resp.TotalProcesses
+
+	logger.Info("BPMN stats retrieved",
+		logger.String("request_id", requestID),
+		logger.Int("total_processes", int(stats.TotalProcesses)))
+
+	c.JSON(http.StatusOK, models.SuccessResponse(stats, requestID))
+}
+
+// GetBPMNProcessJSON handles GET /api/v1/bpmn/processes/:key/json
+// @Summary Get BPMN process JSON
+// @Description Get JSON data of a BPMN process by process key
+// @Tags bpmn
+// @Produce json
+// @Param key path string true "Process Key"
+// @Success 200 {object} models.APIResponse{data=object}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 404 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/bpmn/processes/{key}/json [get]
+func (h *ParserHandler) GetBPMNProcessJSON(c *gin.Context) {
+	requestID := h.getRequestID(c)
+	processKey := c.Param("key")
+
+	if processKey == "" {
+		apiErr := models.BadRequestError("Process key is required")
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Debug("Getting BPMN process JSON",
+		logger.String("request_id", requestID),
+		logger.String("process_key", processKey))
+
+	// Get gRPC client
+	client, conn, err := h.getParserGRPCClient()
+	if err != nil {
+		logger.Error("Failed to get Parser gRPC client",
+			logger.String("request_id", requestID),
+			logger.String("error", err.Error()))
+
+		apiErr := models.InternalServerError("Parser service not available")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+	defer conn.Close()
+
+	// Create gRPC context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Call gRPC GetBPMNProcessJSON method
+	grpcReq := &parserpb.GetBPMNProcessJSONRequest{
+		ProcessKey: processKey,
+	}
+
+	resp, err := client.GetBPMNProcessJSON(ctx, grpcReq)
+	if err != nil {
+		logger.Error("Failed to get BPMN process JSON via gRPC",
+			logger.String("request_id", requestID),
+			logger.String("process_key", processKey),
+			logger.String("error", err.Error()))
+
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if !resp.Success {
+		message := "BPMN process not found"
+		if resp.Message != "" {
+			message = resp.Message
+		}
+		apiErr := models.NotFoundError(message)
+		c.JSON(http.StatusNotFound, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Parse JSON data
+	var jsonData interface{}
+	if err := json.Unmarshal([]byte(resp.JsonData), &jsonData); err != nil {
+		logger.Error("Failed to parse BPMN JSON data",
+			logger.String("request_id", requestID),
+			logger.String("process_key", processKey),
+			logger.String("error", err.Error()))
+
+		apiErr := models.InternalServerError("Invalid JSON data in BPMN process")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Info("BPMN process JSON retrieved",
+		logger.String("request_id", requestID),
+		logger.String("process_key", processKey))
+
+	c.JSON(http.StatusOK, models.SuccessResponse(jsonData, requestID))
+}
+
+// Helper method to get Parser gRPC client
+func (h *ParserHandler) getParserGRPCClient() (parserpb.ParserServiceClient, *grpc.ClientConn, error) {
+	conn, err := h.coreInterface.GetGRPCConnection()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get gRPC connection: %w", err)
+	}
+
+	grpcConn, ok := conn.(*grpc.ClientConn)
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid gRPC connection type")
+	}
+
+	client := parserpb.NewParserServiceClient(grpcConn)
+	return client, grpcConn, nil
 }
