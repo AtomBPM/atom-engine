@@ -70,6 +70,7 @@ type ComponentInterface interface {
 
 	// Message management
 	HandleMessageCallback(messageID, messageName, correlationKey, tokenID string, variables map[string]interface{}) error
+	HandleEngineMessageCallback(messageID, messageName, correlationKey, tokenID string, variables map[string]interface{}) error
 	CheckBufferedMessages(messageName, correlationKey string) (*models.BufferedMessage, error)
 	ProcessBufferedMessage(message *models.BufferedMessage, token *models.Token) error
 	CreateMessageSubscription(subscription *models.ProcessMessageSubscription) error
@@ -491,6 +492,10 @@ func (c *Component) CancelJobByID(jobID string) error {
 
 func (c *Component) HandleMessageCallback(messageID, messageName, correlationKey, tokenID string, variables map[string]interface{}) error {
 	return c.messageManager.HandleMessageCallback(messageID, messageName, correlationKey, tokenID, variables)
+}
+
+func (c *Component) HandleEngineMessageCallback(messageID, messageName, correlationKey, tokenID string, variables map[string]interface{}) error {
+	return c.engine.HandleMessageCallback(messageID, messageName, correlationKey, tokenID, variables)
 }
 
 func (c *Component) CheckBufferedMessages(messageName, correlationKey string) (*models.BufferedMessage, error) {

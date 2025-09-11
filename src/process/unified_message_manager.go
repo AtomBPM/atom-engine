@@ -59,15 +59,14 @@ func (umm *UnifiedMessageManager) HandleMessageCallback(messageID, messageName, 
 		logger.String("token_id", tokenID))
 
 	// Check if this is Message Start Event callback (empty token_id)
-	// Message Start Events create new process instances - needs special handling
+	// Message Start Events create new process instances - delegate to engine
 	if tokenID == "" {
-		logger.Info("Message Start Event callback detected - needs process instance creation",
+		logger.Info("Message Start Event callback detected - delegating to engine",
 			logger.String("message_id", messageID),
 			logger.String("message_name", messageName))
 
-		// For now, return error - Message Start Events need special architectural solution
-		// TODO: Implement proper Message Start Event handling
-		return fmt.Errorf("Message Start Event handling not yet implemented in UnifiedMessageManager")
+		// Delegate Message Start Event handling to engine
+		return umm.component.HandleEngineMessageCallback(messageID, messageName, correlationKey, tokenID, variables)
 	}
 
 	// Handle Intermediate Catch Message Events using CallbackHelper pattern
