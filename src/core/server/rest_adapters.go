@@ -13,6 +13,7 @@ import (
 
 	"atom-engine/src/core/restapi/handlers"
 	"atom-engine/src/jobs"
+	"atom-engine/src/parser"
 )
 
 // REST API adapter methods
@@ -80,10 +81,45 @@ func (c *Core) GetProcessInfoForREST(instanceID string) (map[string]interface{},
 		return nil, fmt.Errorf("failed to get process status: %w", err)
 	}
 
+	// Get BPMN Process Key by finding process definition
+	bpmnProcessKey := ""
+	processKey := processStatus.ProcessKey
+
+	// If ProcessKey is empty, use ProcessID to find the latest version
+	if processStatus.ProcessID != "" {
+		processID := processStatus.ProcessID
+
+		// Get parser component to find BPMN process
+		if parserComp := c.GetParserComponent(); parserComp != nil {
+			// Try to cast to the proper interface
+			if typedParserComp, ok := parserComp.(interface {
+				ListBPMNProcesses(limit int) ([]*parser.ProcessInfo, error)
+			}); ok {
+				// Get all BPMN processes and find matching one
+				if processes, err := typedParserComp.ListBPMNProcesses(100); err == nil {
+					// Find the latest version for this process ID
+					var latestProcess *parser.ProcessInfo
+					for _, process := range processes {
+						if process.ProcessID == processID {
+							if latestProcess == nil || process.ProcessVersion > latestProcess.ProcessVersion {
+								latestProcess = process
+							}
+						}
+					}
+					if latestProcess != nil {
+						bpmnProcessKey = latestProcess.BPMNID
+						processKey = fmt.Sprintf("%s:v%d", latestProcess.ProcessID, latestProcess.ProcessVersion)
+					}
+				}
+			}
+		}
+	}
+
 	// Build complete process info including external services
 	processInfo := map[string]interface{}{
 		"instance_id":       processStatus.InstanceID,
-		"process_key":       processStatus.ProcessKey,
+		"process_key":       processKey,
+		"bpmn_process_key":  bpmnProcessKey,
 		"process_name":      processStatus.ProcessName,
 		"state":             processStatus.State,
 		"created_at":        processStatus.CreatedAt,

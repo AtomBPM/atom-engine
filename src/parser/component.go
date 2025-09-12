@@ -856,3 +856,50 @@ func (c *Component) sendResponse(response ParserResponse) error {
 func (c *Component) GetResponseChannel() <-chan string {
 	return c.responseChannel
 }
+
+// GetBPMNProcessXML returns original BPMN XML content for BPMN process
+// Возвращает оригинальное BPMN XML содержимое для BPMN процесса
+func (c *Component) GetBPMNProcessXML(processKey string) ([]byte, error) {
+	if !c.ready {
+		return nil, fmt.Errorf("parser component not ready")
+	}
+
+	logger.Debug("Getting BPMN process XML",
+		logger.String("process_key", processKey))
+
+	// First, get the process details to extract ProcessID and Version
+	// Сначала получаем детали процесса для извлечения ProcessID и Version
+	processDetails, err := c.GetBPMNProcessDetails(processKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get BPMN process details: %w", err)
+	}
+
+	// Build file path using ProcessID and Version
+	// Строим путь к файлу используя ProcessID и Version
+	bpmnPath := c.getBPMNPath()
+	filename := fmt.Sprintf("%s_v%d.bpmn", processDetails.ProcessID, processDetails.ProcessVersion)
+	filePath := filepath.Join(bpmnPath, filename)
+
+	logger.Debug("Reading BPMN XML file",
+		logger.String("file_path", filePath),
+		logger.String("process_id", processDetails.ProcessID),
+		logger.Int("version", processDetails.ProcessVersion))
+
+	// Read the original BPMN file from filesystem
+	// Читаем оригинальный BPMN файл из файловой системы
+	xmlContent, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("BPMN XML file not found: %s (process may have been parsed before XML storage was implemented)", filename)
+		}
+		return nil, fmt.Errorf("failed to read BPMN XML file: %w", err)
+	}
+
+	logger.Info("Successfully read BPMN XML file",
+		logger.String("process_key", processKey),
+		logger.String("process_id", processDetails.ProcessID),
+		logger.Int("version", processDetails.ProcessVersion),
+		logger.Int("file_size", len(xmlContent)))
+
+	return xmlContent, nil
+}

@@ -11,6 +11,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -265,8 +266,8 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 		return
 	}
 
-	// List process instances
-	instances, err := processComp.ListProcessInstances(status, processKey, params.Limit*params.Page)
+	// List process instances (load all for sorting)
+	instances, err := processComp.ListProcessInstances(status, processKey, 0)
 	if err != nil {
 		logger.Error("Failed to list process instances",
 			logger.String("request_id", requestID),
@@ -278,7 +279,12 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 		return
 	}
 
-	// Apply client-side pagination (since the component returns all results)
+	// Apply sorting by started_at DESC (consistent with gRPC/CLI behavior)
+	sort.Slice(instances, func(i, j int) bool {
+		return instances[i].StartedAt > instances[j].StartedAt
+	})
+
+	// Apply client-side pagination after sorting
 	paginatedInstances, paginationInfo := utils.ApplyPagination(instances, params.Page, params.Limit)
 
 	logger.Info("Process instances listed",

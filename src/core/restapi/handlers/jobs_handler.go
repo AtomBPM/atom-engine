@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -359,7 +360,7 @@ func (h *JobsHandler) ListJobs(c *gin.Context) {
 		logger.String("worker", worker),
 		logger.String("state", state))
 
-	// Create list request
+	// Create list request (load all for sorting)
 	listReq := map[string]interface{}{
 		"type":       "list_jobs",
 		"request_id": requestID,
@@ -367,8 +368,8 @@ func (h *JobsHandler) ListJobs(c *gin.Context) {
 			"job_type": jobType,
 			"worker":   worker,
 			"state":    state,
-			"limit":    params.Limit,
-			"offset":   utils.GetOffset(params.Page, params.Limit),
+			"limit":    0, // Load all for sorting
+			"offset":   0,
 		},
 	}
 
@@ -381,16 +382,24 @@ func (h *JobsHandler) ListJobs(c *gin.Context) {
 		return
 	}
 
-	// Parse jobs and total count from response
+	// Parse jobs from response
 	jobs := h.parseJobsFromResponse(response)
-	totalCount := h.extractTotalCount(response)
+	totalCount := len(jobs)
+
+	// Apply sorting by created_at DESC (consistent with gRPC/CLI behavior)
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt > jobs[j].CreatedAt // DESC order
+	})
+
+	// Apply client-side pagination after sorting
+	paginatedJobs, paginationInfo := utils.ApplyPagination(jobs, params.Page, params.Limit)
 
 	logger.Info("Jobs listed",
 		logger.String("request_id", requestID),
 		logger.Int("count", len(jobs)),
 		logger.Int("total", totalCount))
 
-	paginatedResp := paginationHelper.CreateResponse(jobs, totalCount, params, requestID)
+	paginatedResp := models.PaginatedSuccessResponse(paginatedJobs, paginationInfo, requestID)
 	c.JSON(http.StatusOK, paginatedResp)
 }
 
