@@ -10,6 +10,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	"atom-engine/src/core/models"
 	"atom-engine/src/core/restapi/handlers"
@@ -80,6 +81,70 @@ func (c *Core) GetTimersListForREST(statusFilter string, limit int32) (*handlers
 		Timers:     restTimers,
 		TotalCount: grpcList.TotalCount,
 	}, nil
+}
+
+// GetProcessInfoForREST returns complete process information adapted for REST API
+func (c *Core) GetProcessInfoForREST(instanceID string) (map[string]interface{}, error) {
+	// Get process status
+	processComp := c.GetProcessComponent()
+	if processComp == nil {
+		return nil, fmt.Errorf("process component not available")
+	}
+
+	processStatus, err := processComp.GetProcessInstanceStatus(instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process status: %w", err)
+	}
+
+	// Build complete process info including external services
+	processInfo := map[string]interface{}{
+		"instance_id":       processStatus.InstanceID,
+		"process_key":       processStatus.ProcessKey,
+		"process_name":      processStatus.ProcessName,
+		"state":             processStatus.State,
+		"created_at":        processStatus.CreatedAt,
+		"updated_at":        processStatus.UpdatedAt,
+		"variables":         processStatus.Variables,
+		"external_services": c.buildExternalServicesForREST(instanceID, processStatus.ProcessKey),
+	}
+
+	return processInfo, nil
+}
+
+// buildExternalServicesForREST builds external services info for REST API
+func (c *Core) buildExternalServicesForREST(instanceID, processKey string) map[string]interface{} {
+	externalServices := map[string]interface{}{
+		"timers":                []map[string]interface{}{},
+		"jobs":                  []map[string]interface{}{},
+		"message_subscriptions": []map[string]interface{}{},
+		"buffered_messages":     []map[string]interface{}{},
+		"incidents":             []map[string]interface{}{},
+	}
+
+	// Get timers using existing method
+	if timersResp, err := c.GetTimersList("", 1000); err == nil {
+		var timers []map[string]interface{}
+		for _, timer := range timersResp.Timers {
+			if timer.ProcessInstanceId == instanceID {
+				timerInfo := map[string]interface{}{
+					"timer_id":          timer.TimerId,
+					"element_id":        timer.ElementId,
+					"timer_type":        timer.TimerType,
+					"status":            timer.Status,
+					"scheduled_at":      timer.ScheduledAt,
+					"remaining_seconds": timer.RemainingSeconds,
+					"time_duration":     timer.TimeDuration,
+					"time_cycle":        timer.TimeCycle,
+				}
+				timers = append(timers, timerInfo)
+			}
+		}
+		externalServices["timers"] = timers
+	}
+
+	// TODO: Add jobs, messages, incidents through similar patterns
+
+	return externalServices
 }
 
 // Adapter for process component
