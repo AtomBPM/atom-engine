@@ -267,16 +267,16 @@ func (ep *ExecutionProcessor) handleCallActivityCompletion(childInstanceID strin
 	// Find all tokens waiting for this child process completion
 	waitingFor := fmt.Sprintf("call_activity:%s", childInstanceID)
 
-	// Search through all tokens to find ones waiting for this child process
-	// Note: This is not optimal, waiting tokens index not implemented for better performance
-	allTokens, err := ep.storage.LoadAllTokens()
+	// Search through waiting tokens to find ones waiting for this child process
+	// Optimized: Load only waiting tokens instead of all tokens
+	waitingTokens, err := ep.storage.LoadTokensByState(models.TokenStateWaiting)
 	if err != nil {
-		return fmt.Errorf("failed to load all tokens: %w", err)
+		return fmt.Errorf("failed to load waiting tokens: %w", err)
 	}
 
 	var parentTokens []*models.Token
-	for _, token := range allTokens {
-		if token.WaitingFor == waitingFor && token.State == models.TokenStateWaiting {
+	for _, token := range waitingTokens {
+		if token.WaitingFor == waitingFor {
 			parentTokens = append(parentTokens, token)
 		}
 	}

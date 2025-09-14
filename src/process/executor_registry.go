@@ -50,8 +50,10 @@ func (er *ExecutorRegistry) registerExecutors() {
 	er.RegisterExecutor(NewExclusiveGatewayExecutor(er.component))
 	logger.Info("Registering ParallelGatewayExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))
 	er.RegisterExecutor(NewParallelGatewayExecutor(er.component))
-	er.RegisterExecutor(&InclusiveGatewayExecutor{})
-	er.RegisterExecutor(&EventBasedGatewayExecutor{})
+	logger.Info("Registering InclusiveGatewayExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))
+	er.RegisterExecutor(NewInclusiveGatewayExecutor(er.component))
+	logger.Info("Registering EventBasedGatewayExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))
+	er.RegisterExecutor(NewEventBasedGatewayExecutor(er.component))
 
 	// Register event executors with process component access
 	logger.Info("Registering IntermediateCatchEventExecutor with process component", logger.Bool("hasComponentInterface", er.component != nil))

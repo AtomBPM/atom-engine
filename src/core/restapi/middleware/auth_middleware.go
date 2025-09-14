@@ -251,9 +251,8 @@ func getRequestID(c *gin.Context) string {
 	return generateRequestID()
 }
 
-// generateRequestID generates a simple request ID
+// generateRequestID generates a cryptographically secure request ID
 func generateRequestID() string {
-	// Simple implementation - in production you might want to use UUID
 	return utils.GenerateSecureRequestID("req")
 }
 

@@ -230,7 +230,6 @@ func (h *ProcessHandler) ListProcesses(c *gin.Context) {
 	limitStr := c.DefaultQuery("limit", "20")
 	status := c.Query("status")
 	processKey := c.Query("process_key")
-	_ = c.Query("tenant_id") // tenantID for future implementation
 
 	// Parse and validate pagination
 	paginationHelper := utils.NewPaginationHelper()

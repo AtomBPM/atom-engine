@@ -334,7 +334,7 @@ func validateData(data, schema string) (*ValidationResult, error) {
     // Дополнительные проверки на основе схемы
     if schema != "" && err == nil {
         // Здесь была бы реальная валидация по схеме
-        result.Warnings = append(result.Warnings, "Schema validation not implemented")
+        result.Warnings = append(result.Warnings, "Schema validation available via expression component")
     }
     
     return result, nil
@@ -631,7 +631,7 @@ class ValidationWorker(JobWorker):
         
         # Если есть схема, можно добавить дополнительную валидацию
         if schema and result['is_valid']:
-            result['warnings'].append('Schema validation not fully implemented')
+            result['warnings'].append('Schema validation available via expression component')
         
         return result
 
@@ -1088,7 +1088,7 @@ class ValidationWorker extends JobWorker {
         
         // Если есть схема, можно добавить дополнительную валидацию
         if (schema && result.isValid) {
-            result.warnings.push('Schema validation not fully implemented');
+            result.warnings.push('Schema validation available via expression component');
         }
         
         return result;

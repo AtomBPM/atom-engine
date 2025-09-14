@@ -59,6 +59,58 @@ func (s *BadgerStorage) LogSystemEvent(eventType, status, message string) error 
 	return nil
 }
 
+// LoadSystemEvents loads recent system events from database
+// Загружает последние системные события из базы данных
+func (s *BadgerStorage) LoadSystemEvents(limit int) ([]*SystemEventRecord, error) {
+	if !s.ready {
+		return nil, fmt.Errorf("storage not ready")
+	}
+
+	var events []*SystemEventRecord
+	prefix := []byte("system_events:")
+
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Reverse = true // Load newest events first
+		opts.PrefetchSize = 10
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		count := 0
+		for it.Seek(prefix); it.ValidForPrefix(prefix) && count < limit; it.Next() {
+			item := it.Item()
+
+			err := item.Value(func(val []byte) error {
+				var event SystemEventRecord
+				if err := json.Unmarshal(val, &event); err != nil {
+					logger.Warn("Failed to unmarshal system event",
+						logger.String("key", string(item.Key())),
+						logger.String("error", err.Error()))
+					return nil // Continue processing other events
+				}
+				events = append(events, &event)
+				return nil
+			})
+
+			if err != nil {
+				return err
+			}
+			count++
+		}
+		return nil
+	})
+
+	if err != nil {
+		logger.Error("Failed to load system events", logger.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to load system events from database: %w", err)
+	}
+
+	logger.Debug("Loaded system events from storage",
+		logger.Int("count", len(events)),
+		logger.Int("limit", limit))
+	return events, nil
+}
+
 // GetStatus returns current storage status
 // Возвращает текущий статус storage
 func (s *BadgerStorage) GetStatus() (*StorageStatus, error) {

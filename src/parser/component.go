@@ -916,7 +916,7 @@ func (c *Component) GetBPMNProcessXML(processKey string) ([]byte, error) {
 	xmlContent, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("BPMN XML file not found: %s (process may have been parsed before XML storage was implemented)", filename)
+			return nil, fmt.Errorf("BPMN XML file not found: %s (file may have been moved or deleted after parsing)", filename)
 		}
 		return nil, fmt.Errorf("failed to read BPMN XML file: %w", err)
 	}

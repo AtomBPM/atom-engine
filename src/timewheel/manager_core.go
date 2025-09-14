@@ -11,6 +11,8 @@ package timewheel
 import (
 	"fmt"
 	"time"
+
+	"atom-engine/src/core/logger"
 )
 
 // Manager manages timing wheel and handles JSON communication
@@ -138,10 +140,34 @@ func (m *Manager) processRequests() {
 	for {
 		select {
 		case jsonStr := <-m.requestChannel:
-			if _, err := m.ProcessJSONRequest(jsonStr); err != nil {
-				// In production, you'd log this error
-				// В продакшене вы бы логировали эту ошибку
+			if response, err := m.ProcessJSONRequest(jsonStr); err != nil {
+				logger.Error("Failed to process timewheel JSON request",
+					logger.String("request", jsonStr),
+					logger.String("error", err.Error()))
+
+				// Send error response back through channel if available
+				// Отправляем ответ об ошибке обратно через канал если доступен
+				if m.responseChannel != nil {
+					errorResponse := fmt.Sprintf(`{"success":false,"error":"%s","request_id":"unknown"}`, err.Error())
+					select {
+					case m.responseChannel <- errorResponse:
+						// Error response sent successfully
+					default:
+						logger.Warn("Failed to send error response - response channel full or closed",
+							logger.String("original_error", err.Error()))
+					}
+				}
 				continue
+			} else if response != "" && m.responseChannel != nil {
+				// Send successful response if available
+				// Отправляем успешный ответ если доступен
+				select {
+				case m.responseChannel <- response:
+					// Response sent successfully
+				default:
+					logger.Warn("Failed to send response - response channel full or closed",
+						logger.String("response", response))
+				}
 			}
 		case <-m.stopChan:
 			return

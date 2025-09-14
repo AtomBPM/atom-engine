@@ -51,6 +51,7 @@ type ComponentInterface interface {
 	// Token management
 	GetActiveTokens(instanceID string) ([]*models.Token, error)
 	GetTokensByProcessInstance(instanceID string) ([]*models.Token, error)
+	GetAllTokens() ([]*models.Token, error)
 	ExecuteToken(token *models.Token) error
 	ContinueExecution(instanceID string) error
 	UpdateToken(token *models.Token) error
@@ -371,6 +372,10 @@ func (c *Component) GetTokensByProcessInstance(instanceID string) ([]*models.Tok
 	return c.tokenManager.GetTokensByProcessInstance(instanceID)
 }
 
+func (c *Component) GetAllTokens() ([]*models.Token, error) {
+	return c.storage.LoadAllTokens()
+}
+
 func (c *Component) ExecuteToken(token *models.Token) error {
 	if !c.IsReady() {
 		return fmt.Errorf("process component not ready")
@@ -558,8 +563,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize storage (would need proper configuration in real usage)
-	// This is a placeholder for autonomous component operation
+	// Initialize storage for autonomous operation
 	fmt.Println("Process component started in autonomous mode")
 
 	// Process the request and return JSON response

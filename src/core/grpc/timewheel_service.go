@@ -17,6 +17,7 @@ import (
 	"atom-engine/proto/timewheel/timewheelpb"
 	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
+	"atom-engine/src/storage"
 	"atom-engine/src/timewheel"
 )
 
@@ -217,14 +218,68 @@ func (s *timewheelServiceServer) GetTimerStatus(ctx context.Context, req *timewh
 		}, fmt.Errorf("timewheel component not initialized")
 	}
 
-	// For now return basic status - can be enhanced with actual timer lookup
-	// Пока возвращаем базовый статус - можно улучшить реальным поиском таймера
+	// Get real timer status from storage and timewheel
+	// Получаем реальный статус таймера из storage и timewheel
+
+	// First try to get timer info from timewheel (for active timers)
+	_, remainingSeconds, foundInWheel := component.GetTimerInfo(req.TimerId)
+
+	// Get timer record from storage for status and metadata
+	storageInterface := s.core.GetStorage()
+	storageComp, ok := storageInterface.(storage.Storage)
+	if !ok {
+		return &timewheelpb.GetTimerStatusResponse{
+			TimerId: req.TimerId,
+			Status:  "error",
+		}, fmt.Errorf("storage component not available")
+	}
+
+	timerRecord, err := storageComp.LoadTimer(req.TimerId)
+	if err != nil {
+		// Timer not found in storage - it may not exist
+		return &timewheelpb.GetTimerStatusResponse{
+			TimerId: req.TimerId,
+			Status:  "not_found",
+		}, nil
+	}
+
+	// Determine status based on storage state and wheel presence
+	var status string
+	var remainingMs int64
+	var isRepeating bool
+
+	switch timerRecord.State {
+	case "SCHEDULED":
+		if foundInWheel {
+			status = "pending"
+			remainingMs = remainingSeconds * 1000 // Convert to milliseconds
+		} else {
+			// Scheduled in storage but not in wheel - likely system restart scenario
+			status = "pending"
+			remainingMs = 0
+		}
+	case "FIRED":
+		status = "fired"
+		remainingMs = 0
+	case "CANCELLED":
+		status = "cancelled"
+		remainingMs = 0
+	default:
+		status = "unknown"
+		remainingMs = 0
+	}
+
+	// Check if timer is repeating (has time_cycle)
+	if timerRecord.TimeCycle != nil && *timerRecord.TimeCycle != "" {
+		isRepeating = true
+	}
+
 	return &timewheelpb.GetTimerStatusResponse{
 		TimerId:     req.TimerId,
-		Status:      "pending", // pending, fired, cancelled
-		ScheduledAt: time.Now().Unix(),
-		RemainingMs: 0,
-		IsRepeating: false,
+		Status:      status,
+		ScheduledAt: timerRecord.ScheduledAt.Unix(),
+		RemainingMs: remainingMs,
+		IsRepeating: isRepeating,
 	}, nil
 }
 

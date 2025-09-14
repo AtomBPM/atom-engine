@@ -10,9 +10,9 @@ package timewheel
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
 	"atom-engine/src/storage"
 )
@@ -26,7 +26,9 @@ func (m *Manager) handleTimerFired(ctx context.Context, timer *models.Timer) err
 	// Debug: log all timer variables for boundary timers
 	// Отладка: логируем все переменные таймера для boundary таймеров
 	if timer.Type == models.TimerTypeBoundary {
-		fmt.Printf("BOUNDARY TIMER FIRED: %s, Variables: %+v\n", timer.ID, timer.Variables)
+		logger.Debug("Boundary timer fired",
+			logger.String("timer_id", timer.ID),
+			logger.Any("variables", timer.Variables))
 	}
 
 	// Update timer status in storage to FIRED
@@ -36,7 +38,9 @@ func (m *Manager) handleTimerFired(ctx context.Context, timer *models.Timer) err
 		// Загружаем существующую запись таймера чтобы сохранить все поля
 		existingRecord, err := m.storage.LoadTimer(timer.ID)
 		if err != nil {
-			fmt.Printf("Failed to load existing timer for update: %v\n", err)
+			logger.Error("Failed to load existing timer for update",
+				logger.String("timer_id", timer.ID),
+				logger.String("error", err.Error()))
 			return nil
 		}
 
@@ -49,18 +53,23 @@ func (m *Manager) handleTimerFired(ctx context.Context, timer *models.Timer) err
 		if err != nil {
 			// Log error but don't fail the timer processing
 			// Логируем ошибку но не прерываем обработку таймера
-			fmt.Printf("Failed to update timer status in storage: %v\n", err)
+			logger.Error("Failed to update timer status in storage",
+				logger.String("timer_id", timer.ID),
+				logger.String("error", err.Error()))
 		}
 	}
 
 	// Handle cycle timers for rescheduling
 	// Обрабатываем циклические таймеры для переplanирования
 	if cycleStr, ok := timer.Variables["time_cycle"].(string); ok {
-		fmt.Printf("Found time_cycle for timer %s: %s, handling cycle\n", timer.ID, cycleStr)
+		logger.Debug("Found time_cycle for timer - handling cycle",
+			logger.String("timer_id", timer.ID),
+			logger.String("time_cycle", cycleStr))
 		return m.handleCycleTimer(timer, cycleStr)
 	} else {
 		if timer.Type == models.TimerTypeBoundary {
-			fmt.Printf("No time_cycle found for boundary timer %s\n", timer.ID)
+			logger.Debug("No time_cycle found for boundary timer",
+				logger.String("timer_id", timer.ID))
 		}
 	}
 
@@ -87,7 +96,9 @@ func (m *Manager) handleCycleTimer(timer *models.Timer, cycleStr string) error {
 		// Для BOUNDARY таймеров проверяем активен ли еще родительский scope
 		if timer.Type == models.TimerTypeBoundary {
 			if !m.isParentScopeActive(timer) {
-				fmt.Printf("Parent scope ended for boundary timer %s - canceling repeats\n", timer.ID)
+				logger.Info("Parent scope ended for boundary timer - canceling repeats",
+					logger.String("timer_id", timer.ID),
+					logger.String("process_instance_id", timer.ProcessInstanceID))
 				return nil // Parent scope ended, don't create more iterations
 			}
 		}
@@ -159,9 +170,14 @@ func (m *Manager) handleCycleTimer(timer *models.Timer, cycleStr string) error {
 			}
 
 			if err := m.storage.SaveTimer(timerRecord); err != nil {
-				fmt.Printf("Failed to save repeat timer to storage: %v\n", err)
+				logger.Error("Failed to save repeat timer to storage",
+					logger.String("timer_id", nextTimer.ID),
+					logger.Int("iteration", currentIteration+1),
+					logger.String("error", err.Error()))
 			} else {
-				fmt.Printf("Repeat timer saved to storage: %s (iteration %d)\n", nextTimer.ID, currentIteration+1)
+				logger.Debug("Repeat timer saved to storage",
+					logger.String("timer_id", nextTimer.ID),
+					logger.Int("iteration", currentIteration+1))
 			}
 		}
 
@@ -177,11 +193,101 @@ func (m *Manager) handleCycleTimer(timer *models.Timer, cycleStr string) error {
 // isParentScopeActive checks if parent scope is still active for boundary timer
 // Проверяет активен ли родительский scope для boundary таймера
 func (m *Manager) isParentScopeActive(timer *models.Timer) bool {
-	// For now, return true - real implementation would check with process component
-	// Пока возвращаем true - реальная реализация проверяла бы через process компонент
-	// This is a simplification - in production we'd need a callback to process component
-	// Это упрощение - в продакшене нужен был бы колбек в process компонент
+	logger.Debug("Checking parent scope activity for boundary timer",
+		logger.String("timer_id", timer.ID),
+		logger.String("execution_token_id", timer.ExecutionTokenID),
+		logger.String("process_instance_id", timer.ProcessInstanceID))
 
-	fmt.Printf("Checking parent scope for boundary timer %s - assuming active\n", timer.ID)
-	return true
+	// Strategy 1: Check execution token if available
+	// Стратегия 1: Проверяем execution token если доступен
+	if timer.ExecutionTokenID != "" && m.storage != nil {
+		if token, err := m.storage.LoadToken(timer.ExecutionTokenID); err == nil {
+			isActive := token.State == models.TokenStateActive
+			logger.Debug("Boundary timer parent scope check via execution token",
+				logger.String("timer_id", timer.ID),
+				logger.String("token_id", timer.ExecutionTokenID),
+				logger.String("token_state", string(token.State)),
+				logger.Bool("is_active", isActive))
+			return isActive
+		} else {
+			logger.Warn("Failed to load execution token for boundary timer",
+				logger.String("timer_id", timer.ID),
+				logger.String("token_id", timer.ExecutionTokenID),
+				logger.String("error", err.Error()))
+		}
+	}
+
+	// Strategy 2: Check attached activity via process instance tokens
+	// Стратегия 2: Проверяем привязанную активность через токены экземпляра процесса
+	if attachedToRef, exists := timer.Variables["attached_to_ref"]; exists && m.storage != nil {
+		if attachedElementID, ok := attachedToRef.(string); ok && attachedElementID != "" {
+			return m.checkAttachedActivityStatus(timer.ProcessInstanceID, attachedElementID, timer.ID)
+		}
+	}
+
+	// Strategy 3: Fallback to process instance activity check
+	// Стратегия 3: Возврат к проверке активности экземпляра процесса
+	if timer.ProcessInstanceID != "" && m.storage != nil {
+		activeTokens, err := m.storage.LoadTokensByProcessInstance(timer.ProcessInstanceID)
+		if err == nil {
+			// If there are any active tokens in the process instance, assume scope is active
+			// Если есть активные токены в экземпляре процесса, считаем scope активным
+			for _, token := range activeTokens {
+				if token.State == models.TokenStateActive {
+					logger.Debug("Found active tokens in process instance - scope considered active",
+						logger.String("timer_id", timer.ID),
+						logger.String("process_instance_id", timer.ProcessInstanceID),
+						logger.Int("active_tokens_count", len(activeTokens)))
+					return true
+				}
+			}
+			logger.Debug("No active tokens found in process instance - scope considered inactive",
+				logger.String("timer_id", timer.ID),
+				logger.String("process_instance_id", timer.ProcessInstanceID))
+			return false
+		} else {
+			logger.Error("Failed to load process instance tokens for boundary timer scope check",
+				logger.String("timer_id", timer.ID),
+				logger.String("process_instance_id", timer.ProcessInstanceID),
+				logger.String("error", err.Error()))
+		}
+	}
+
+	// Final fallback: assume inactive to prevent runaway timers
+	// Финальный возврат: считаем неактивным чтобы предотвратить бесконтрольные таймеры
+	logger.Warn("Unable to determine parent scope activity - assuming inactive to prevent runaway timers",
+		logger.String("timer_id", timer.ID))
+	return false
+}
+
+// checkAttachedActivityStatus checks if the attached activity is still active
+// Проверяет активность привязанной активности
+func (m *Manager) checkAttachedActivityStatus(processInstanceID, attachedElementID, timerID string) bool {
+	tokens, err := m.storage.LoadTokensByProcessInstance(processInstanceID)
+	if err != nil {
+		logger.Error("Failed to load tokens for attached activity check",
+			logger.String("timer_id", timerID),
+			logger.String("process_instance_id", processInstanceID),
+			logger.String("attached_element_id", attachedElementID),
+			logger.String("error", err.Error()))
+		return false
+	}
+
+	// Look for active tokens on the attached activity
+	// Ищем активные токены на привязанной активности
+	for _, token := range tokens {
+		if token.State == models.TokenStateActive && token.CurrentElementID == attachedElementID {
+			logger.Debug("Found active token on attached activity",
+				logger.String("timer_id", timerID),
+				logger.String("attached_element_id", attachedElementID),
+				logger.String("token_id", token.TokenID))
+			return true
+		}
+	}
+
+	logger.Debug("No active tokens found on attached activity",
+		logger.String("timer_id", timerID),
+		logger.String("attached_element_id", attachedElementID),
+		logger.Int("total_tokens_checked", len(tokens)))
+	return false
 }

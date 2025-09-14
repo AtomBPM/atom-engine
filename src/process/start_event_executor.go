@@ -162,8 +162,11 @@ func (se *StartEventExecutor) handleMessageStartEvent(token *models.Token, eleme
 		}
 	}
 
-	// Correlation key extraction from message definition not implemented
-	// Извлечение correlation key из message definition не реализовано
+	// Extract correlation key from message definition
+	// Извлекаем correlation key из определения сообщения
+	if messageName != "" {
+		correlationKey = se.extractCorrelationKeyFromMessage(token, messageName)
+	}
 
 	// Create message subscription for this start event
 	// Создаем подписку на сообщение для этого стартового события
@@ -305,4 +308,78 @@ func (se *StartEventExecutor) isAutoStartedToken(token *models.Token) bool {
 	logger.Info("Token appears to be from initial registration",
 		logger.String("token_id", token.TokenID))
 	return false
+}
+
+// extractCorrelationKeyFromMessage extracts correlation key from message definition
+// Извлекает correlation key из определения сообщения
+func (se *StartEventExecutor) extractCorrelationKeyFromMessage(token *models.Token, messageName string) string {
+	// Get full BPMN process definition
+	// Получаем полное определение BPMN процесса
+	bpmnProcess, err := se.processComponent.GetBPMNProcessForToken(token)
+	if err != nil {
+		logger.Error("Failed to get BPMN process for correlation key extraction",
+			logger.String("token_id", token.TokenID),
+			logger.String("message_name", messageName),
+			logger.String("error", err.Error()))
+		return ""
+	}
+
+	// Extract elements from process map
+	// Извлекаем элементы из карты процесса
+	elements, ok := bpmnProcess["elements"].(map[string]interface{})
+	if !ok {
+		logger.Error("Invalid elements structure in BPMN process",
+			logger.String("token_id", token.TokenID),
+			logger.String("message_name", messageName))
+		return ""
+	}
+
+	// Find message definition by ID
+	// Ищем определение сообщения по ID
+	if element, exists := elements[messageName]; exists {
+		if elementMap, ok := element.(map[string]interface{}); ok {
+			if elementType, exists := elementMap["type"]; exists && elementType == "message" {
+				// Found message definition, extract correlation key
+				// Нашли определение сообщения, извлекаем correlation key
+				if extensionElements, exists := elementMap["extension_elements"]; exists {
+					if extList, ok := extensionElements.([]interface{}); ok {
+						for _, ext := range extList {
+							if extMap, ok := ext.(map[string]interface{}); ok {
+								if extensions, exists := extMap["extensions"]; exists {
+									if extensionsList, ok := extensions.([]interface{}); ok {
+										for _, extension := range extensionsList {
+											if extensionMap, ok := extension.(map[string]interface{}); ok {
+												if extensionType, exists := extensionMap["type"]; exists && extensionType == "subscription" {
+													if attributes, exists := extensionMap["attributes"]; exists {
+														if attrsMap, ok := attributes.(map[string]interface{}); ok {
+															if corrKey, exists := attrsMap["correlationKey"]; exists {
+																if corrKeyStr, ok := corrKey.(string); ok {
+																	logger.Info("Correlation key extracted from message definition",
+																		logger.String("message_name", messageName),
+																		logger.String("correlation_key", corrKeyStr))
+																	return corrKeyStr
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
+				logger.Warn("Message definition found but no correlation key in extensions",
+					logger.String("message_name", messageName))
+				return ""
+			}
+		}
+	}
+
+	logger.Warn("Message definition not found for correlation key extraction",
+		logger.String("message_name", messageName))
+	return ""
 }

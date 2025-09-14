@@ -16,18 +16,39 @@ import (
 	"time"
 )
 
-// GenerateSecureRequestID generates a cryptographically secure request ID
+// GenerateSecureRequestID generates a cryptographically secure request ID using UUID v4 standard
 func GenerateSecureRequestID(prefix string) string {
-	// Generate 6 random bytes (12 hex chars)
-	randomBytes := make([]byte, 6)
-	if _, err := rand.Read(randomBytes); err != nil {
-		// Fallback to timestamp-based ID if crypto/rand fails
+	uuid := generateUUIDv4()
+	if uuid == "" {
+		// Fallback to timestamp-based ID if UUID generation fails
 		timestamp := time.Now().UnixNano()
 		return fmt.Sprintf("%s_%d", prefix, timestamp%1000000)
 	}
 
-	randomStr := hex.EncodeToString(randomBytes)
-	return fmt.Sprintf("%s_%s", prefix, randomStr)
+	return fmt.Sprintf("%s_%s", prefix, uuid)
+}
+
+// generateUUIDv4 generates a UUID v4 (random) compliant with RFC 4122
+func generateUUIDv4() string {
+	// UUID v4 requires 16 random bytes
+	uuid := make([]byte, 16)
+	if _, err := rand.Read(uuid); err != nil {
+		return "" // Indicate failure
+	}
+
+	// Set version (4) in the most significant 4 bits of the 7th byte
+	uuid[6] = (uuid[6] & 0x0f) | 0x40 // Version 4
+
+	// Set variant (2 bits) in the most significant 2 bits of the 9th byte
+	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant bits 10
+
+	// Format as UUID string: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		uuid[0:4],   // time_low
+		uuid[4:6],   // time_mid
+		uuid[6:8],   // time_hi_and_version
+		uuid[8:10],  // clock_seq_hi_and_reserved + clock_seq_low
+		uuid[10:16]) // node
 }
 
 // GenerateSecureRandomString generates a cryptographically secure random string

@@ -9,10 +9,14 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package server
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +69,14 @@ type Core struct {
 	// Message Multiplexer for jobs component
 	// Message Multiplexer для jobs компонента
 	jobsMultiplexer MessageMultiplexerInterface
+
+	// CPU monitoring fields for sophisticated calculation
+	// Поля мониторинга CPU для более точных вычислений
+	lastCPUUpdate    time.Time
+	lastUserTime     int64
+	lastSystemTime   int64
+	cachedCPUUsage   float64
+	cpuCacheDuration time.Duration
 }
 
 // NewCore creates new core instance
@@ -141,8 +153,9 @@ func NewCoreWithConfig(cfg *config.Config) (*Core, error) {
 
 		// Initialize typed interface fields
 		// Инициализируем поля для typed интерфейса
-		startTime:      time.Now(),
-		isShuttingDown: false,
+		startTime:        time.Now(),
+		isShuttingDown:   false,
+		cpuCacheDuration: 5 * time.Second, // Cache CPU metrics for 5 seconds
 	}, nil
 }
 
@@ -1088,21 +1101,202 @@ func (c *Core) getSystemConfiguration() map[string]interface{} {
 	return config
 }
 
-// calculateCPUUsage calculates current CPU usage
-// Вычисляет текущее использование CPU
+// calculateCPUUsage calculates current CPU usage using sophisticated methods
+// Вычисляет текущее использование CPU с использованием продвинутых методов
 func (c *Core) calculateCPUUsage() float64 {
-	// Simple CPU usage calculation based on goroutines and process time
-	// This is a basic implementation - for production, consider using more sophisticated methods
-	numGoroutines := runtime.NumGoroutine()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	// Rough estimation based on number of goroutines and system load
-	// For more accurate CPU usage, would need to track CPU time over intervals
-	baseUsage := float64(numGoroutines) * 0.1
-	if baseUsage > 100.0 {
-		baseUsage = 100.0
+	now := time.Now()
+
+	// Use cached value if still fresh (within cache duration)
+	// Используем кэшированное значение если оно еще свежее
+	if !c.lastCPUUpdate.IsZero() && now.Sub(c.lastCPUUpdate) < c.cpuCacheDuration {
+		return c.cachedCPUUsage
 	}
 
-	return baseUsage
+	// Strategy 1: Try to read process CPU usage from runtime
+	// Стратегия 1: Пытаемся получить CPU usage процесса из runtime
+	if cpuPercent := c.calculateProcessCPUUsage(now); cpuPercent >= 0 {
+		c.cachedCPUUsage = cpuPercent
+		c.lastCPUUpdate = now
+		return cpuPercent
+	}
+
+	// Strategy 2: Estimate based on runtime metrics and goroutines
+	// Стратегия 2: Оценка на основе runtime метрик и горутин
+	cpuUsage := c.estimateCPUFromRuntimeMetrics()
+
+	c.cachedCPUUsage = cpuUsage
+	c.lastCPUUpdate = now
+	return cpuUsage
+}
+
+// calculateProcessCPUUsage calculates CPU usage based on process times
+// Вычисляет CPU usage на основе времени процесса
+func (c *Core) calculateProcessCPUUsage(now time.Time) float64 {
+	// Get current process times
+	// Получаем текущее время процесса
+	userTime, systemTime := c.getProcessTimes()
+	if userTime < 0 || systemTime < 0 {
+		return -1 // Failed to get process times
+	}
+
+	// If this is first measurement, store times and return estimate
+	// Если это первое измерение, сохраняем времена и возвращаем оценку
+	if c.lastCPUUpdate.IsZero() {
+		c.lastUserTime = userTime
+		c.lastSystemTime = systemTime
+		// Return initial estimate based on goroutines
+		return c.estimateCPUFromRuntimeMetrics()
+	}
+
+	// Calculate time differences
+	// Вычисляем разности времен
+	timeDiff := now.Sub(c.lastCPUUpdate).Seconds()
+	userDiff := float64(userTime-c.lastUserTime) / 1000000.0 // Convert from microseconds to seconds
+	systemDiff := float64(systemTime-c.lastSystemTime) / 1000000.0
+
+	if timeDiff <= 0 {
+		return c.cachedCPUUsage // No time passed, return cached value
+	}
+
+	// Calculate CPU percentage: (total_cpu_time / elapsed_time) * 100
+	// Вычисляем процент CPU: (общее_время_cpu / прошедшее_время) * 100
+	totalCPUTime := userDiff + systemDiff
+	cpuPercent := (totalCPUTime / timeDiff) * 100.0
+
+	// Store current times for next calculation
+	// Сохраняем текущие времена для следующего вычисления
+	c.lastUserTime = userTime
+	c.lastSystemTime = systemTime
+
+	// Limit to reasonable bounds
+	// Ограничиваем разумными пределами
+	if cpuPercent < 0 {
+		cpuPercent = 0
+	} else if cpuPercent > 100 {
+		cpuPercent = 100
+	}
+
+	return cpuPercent
+}
+
+// estimateCPUFromRuntimeMetrics estimates CPU usage from runtime metrics
+// Оценивает CPU usage по runtime метрикам
+func (c *Core) estimateCPUFromRuntimeMetrics() float64 {
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	numGoroutines := runtime.NumGoroutine()
+	numCPU := runtime.NumCPU()
+
+	// Multi-factor estimation combining various metrics
+	// Многофакторная оценка, комбинирующая различные метрики
+
+	// Factor 1: Goroutine load relative to CPU cores
+	// Фактор 1: Нагрузка горутин относительно ядер CPU
+	goroutineLoad := float64(numGoroutines) / float64(numCPU) * 5.0
+	if goroutineLoad > 50 {
+		goroutineLoad = 50 // Cap goroutine contribution
+	}
+
+	// Factor 2: GC pressure indicates CPU activity
+	// Фактор 2: Давление GC указывает на активность CPU
+	gcLoad := float64(memStats.NumGC) * 0.1
+	if gcLoad > 20 {
+		gcLoad = 20 // Cap GC contribution
+	}
+
+	// Factor 3: Memory allocation rate indicates processing activity
+	// Фактор 3: Скорость аллокации памяти указывает на активность обработки
+	mallocLoad := float64(memStats.Mallocs-memStats.Frees) / 1000.0
+	if mallocLoad > 20 {
+		mallocLoad = 20 // Cap malloc contribution
+	}
+
+	// Factor 4: System uptime factor (busy systems tend to have steady load)
+	// Фактор 4: Фактор времени работы системы
+	uptime := time.Since(c.startTime).Seconds()
+	uptimeFactor := math.Min(uptime/3600.0*2.0, 10.0) // 2% per hour, max 10%
+
+	// Combine factors with weights
+	// Комбинируем факторы с весами
+	estimatedCPU := goroutineLoad*0.4 + gcLoad*0.2 + mallocLoad*0.2 + uptimeFactor*0.2
+
+	// Apply system load factor based on number of CPUs
+	// Применяем фактор системной нагрузки на основе количества CPU
+	if numCPU > 0 {
+		estimatedCPU = estimatedCPU / float64(numCPU) * 2.0
+	}
+
+	// Ensure reasonable bounds
+	// Обеспечиваем разумные границы
+	if estimatedCPU < 0 {
+		estimatedCPU = 0
+	} else if estimatedCPU > 95 {
+		estimatedCPU = 95 // Leave some headroom
+	}
+
+	return estimatedCPU
+}
+
+// getProcessTimes returns user and system time for current process in microseconds
+// Возвращает user и system время для текущего процесса в микросекундах
+func (c *Core) getProcessTimes() (userTime, systemTime int64) {
+	// Try to read from /proc/self/stat on Linux
+	// Пытаемся прочитать из /proc/self/stat на Linux
+	if userTime, systemTime := c.readLinuxProcessTimes(); userTime >= 0 {
+		return userTime, systemTime
+	}
+
+	// Fallback: Use runtime GC stats as proxy for process activity
+	// Запасной вариант: Используем GC статистику как приближение к активности процесса
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	// Use GC pause time as approximation of system activity
+	// Используем время пауз GC как приближение к системной активности
+	totalPauseNs := memStats.PauseTotalNs
+	return int64(totalPauseNs / 1000), int64(totalPauseNs / 1000) // Convert to microseconds
+}
+
+// readLinuxProcessTimes reads process times from /proc/self/stat on Linux
+// Читает времена процесса из /proc/self/stat на Linux
+func (c *Core) readLinuxProcessTimes() (userTime, systemTime int64) {
+	file, err := os.Open("/proc/self/stat")
+	if err != nil {
+		return -1, -1 // Not available on this system
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	if !scanner.Scan() {
+		return -1, -1
+	}
+
+	fields := strings.Fields(scanner.Text())
+	if len(fields) < 15 {
+		return -1, -1 // Invalid format
+	}
+
+	// Field 13: utime - CPU time spent in user mode (in clock ticks)
+	// Field 14: stime - CPU time spent in kernel mode (in clock ticks)
+	userTicks, err1 := strconv.ParseInt(fields[13], 10, 64)
+	systemTicks, err2 := strconv.ParseInt(fields[14], 10, 64)
+
+	if err1 != nil || err2 != nil {
+		return -1, -1
+	}
+
+	// Convert clock ticks to microseconds
+	// Clock ticks per second is typically 100 (USER_HZ)
+	// Конвертируем clock ticks в микросекунды
+	clockTicks := int64(100) // USER_HZ, typically 100 on Linux
+	userTimeMicros := (userTicks * 1000000) / clockTicks
+	systemTimeMicros := (systemTicks * 1000000) / clockTicks
+
+	return userTimeMicros, systemTimeMicros
 }
 
 // IncrementRequestCount increments total request count

@@ -9,6 +9,7 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package server
 
 import (
+	"fmt"
 	"time"
 
 	"atom-engine/src/core/grpc"
@@ -274,19 +275,38 @@ func (a *processComponentAdapter) ListProcessInstancesTyped(req *types.ProcessLi
 		processKeyFilter = *req.ProcessKey
 	}
 
-	limit := int(req.Limit)
-	if limit <= 0 {
-		limit = 10 // Default limit
-	}
-
-	instances, err := a.comp.ListProcessInstances(statusFilter, processKeyFilter, limit)
+	// Load ALL instances for proper pagination (pass 0 for no limit)
+	instances, err := a.comp.ListProcessInstances(statusFilter, processKeyFilter, 0)
 	if err != nil {
 		return nil, err
 	}
 
+	// Store total count before pagination
+	totalCount := len(instances)
+
+	// Set pagination defaults
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 20 // Default page size
+	}
+	offset := int(req.Offset)
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Apply pagination
+	var paginatedInstances []*models.ProcessInstance
+	if offset < len(instances) {
+		end := offset + limit
+		if end > len(instances) {
+			end = len(instances)
+		}
+		paginatedInstances = instances[offset:end]
+	}
+
 	// Convert to typed response
-	typedInstances := make([]types.ProcessInstanceDetails, 0, len(instances))
-	for _, instance := range instances {
+	typedInstances := make([]types.ProcessInstanceDetails, 0, len(paginatedInstances))
+	for _, instance := range paginatedInstances {
 		// Convert variables
 		variables := make(types.ProcessVariables)
 		for k, v := range instance.Variables {
@@ -318,33 +338,113 @@ func (a *processComponentAdapter) ListProcessInstancesTyped(req *types.ProcessLi
 		typedInstances = append(typedInstances, typedInstance)
 	}
 
+	// Calculate if there are more items
+	hasMore := offset+limit < totalCount
+
 	return &types.ProcessListResponse{
 		Instances:  typedInstances,
-		TotalCount: int32(len(typedInstances)),
-		HasMore:    false, // Pagination not implemented yet
+		TotalCount: int32(totalCount),
+		HasMore:    hasMore,
 	}, nil
 }
 
 // GetProcessStats returns process statistics
 // Возвращает статистику процессов
 func (a *processComponentAdapter) GetProcessStats() (*types.ProcessStats, error) {
-	// Basic stats implementation - could be enhanced with real metrics
+	// Get real statistics from storage and components
+	// Получаем реальную статистику из storage и компонентов
+
+	// Load all process instances for statistics
+	instances, err := a.comp.ListProcessInstances("", "", -1) // Get all instances
+	if err != nil {
+		return nil, fmt.Errorf("failed to load process instances: %w", err)
+	}
+
+	// Get token statistics from token manager
+	// Since GetTokenStatistics is not exposed in Component interface,
+	// we'll get token counts by loading tokens by state
+	tokenStats := make(map[string]int)
+
+	// Count tokens by state using existing Component methods
+	if allTokens, err := a.comp.GetAllTokens(); err == nil {
+		for _, token := range allTokens {
+			stateKey := string(token.State)
+			tokenStats[stateKey]++
+		}
+	}
+
+	// Calculate process statistics by status
+	var totalInstances, activeInstances, completedInstances, cancelledInstances int64
+	instancesByProcess := make(map[string]int64)
+	instancesByStatus := make(map[types.ProcessStatus]int64)
+	instancesByTenant := make(map[string]int64)
+
+	processKeys := make(map[string]bool)
+
+	for _, instance := range instances {
+		totalInstances++
+
+		// Count by process key
+		instancesByProcess[instance.ProcessKey]++
+		processKeys[instance.ProcessKey] = true
+
+		// Count by tenant (using process key as tenant for now)
+		instancesByTenant[instance.ProcessKey]++
+
+		// Count by status
+		switch instance.State {
+		case models.ProcessInstanceStateActive:
+			activeInstances++
+			instancesByStatus[types.ProcessStatusActive]++
+		case models.ProcessInstanceStateCompleted:
+			completedInstances++
+			instancesByStatus[types.ProcessStatusCompleted]++
+		case models.ProcessInstanceStateCanceled:
+			cancelledInstances++
+			instancesByStatus[types.ProcessStatusCancelled]++
+		case models.ProcessInstanceStateFailed:
+			instancesByStatus[types.ProcessStatusFailed]++
+		case models.ProcessInstanceStateSuspended:
+			instancesByStatus[types.ProcessStatusSuspended]++
+		}
+	}
+
+	// Extract token counts from token statistics
+	var totalTokens, activeTokens, completedTokens int64
+	if count, exists := tokenStats[string(models.TokenStateActive)]; exists {
+		activeTokens = int64(count)
+		totalTokens += int64(count)
+	}
+	if count, exists := tokenStats[string(models.TokenStateCompleted)]; exists {
+		completedTokens = int64(count)
+		totalTokens += int64(count)
+	}
+	if count, exists := tokenStats[string(models.TokenStateCanceled)]; exists {
+		totalTokens += int64(count)
+	}
+	if count, exists := tokenStats[string(models.TokenStateFailed)]; exists {
+		totalTokens += int64(count)
+	}
+	if count, exists := tokenStats[string(models.TokenStateWaiting)]; exists {
+		totalTokens += int64(count)
+	}
+
 	return &types.ProcessStats{
-		TotalInstances:        0, // Would require implementing counter in storage
-		ActiveInstances:       0, // Would require implementing counter in storage
-		CompletedInstances:    0,
-		CancelledInstances:    0,
-		FailedInstances:       0,
-		SuspendedInstances:    0,
-		TotalDefinitions:      0,
-		ActiveDefinitions:     0,
-		InstancesByProcess:    make(map[string]int64),
-		InstancesByStatus:     make(map[types.ProcessStatus]int64),
-		InstancesByTenant:     make(map[string]int64),
-		AverageExecutionTime:  0,
-		TotalTokens:           0,
-		ActiveTokens:          0,
-		CompletedTokens:       0,
+		TotalInstances:        totalInstances,
+		ActiveInstances:       activeInstances,
+		CompletedInstances:    completedInstances,
+		CancelledInstances:    cancelledInstances,
+		FailedInstances:       instancesByStatus[types.ProcessStatusFailed],
+		SuspendedInstances:    instancesByStatus[types.ProcessStatusSuspended],
+		TotalDefinitions:      int64(len(processKeys)),
+		ActiveDefinitions:     int64(len(processKeys)), // Assume all loaded definitions are active
+		InstancesByProcess:    instancesByProcess,
+		InstancesByStatus:     instancesByStatus,
+		InstancesByTenant:     instancesByTenant,
+		AverageExecutionTime:  0, // Complex calculation, would need execution time tracking
+		TotalTokens:           totalTokens,
+		ActiveTokens:          activeTokens,
+		CompletedTokens:       completedTokens,
 		LastInstanceStarted:   nil,
 		LastInstanceCompleted: nil,
 	}, nil
@@ -364,17 +464,40 @@ func (a *processComponentAdapter) GetTokensTyped(req *types.TokenListRequest) (*
 			tokens, err = a.comp.GetTokensByProcessInstance(*req.ProcessInstanceID)
 		}
 	} else {
-		// Getting all tokens not implemented yet - would be expensive operation
-		tokens = []*models.Token{}
+		// Get all tokens from storage
+		tokens, err = a.comp.GetAllTokens()
 	}
 
 	if err != nil {
 		return nil, err
 	}
 
+	// Store total count before pagination
+	totalCount := len(tokens)
+
+	// Set pagination defaults
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 50 // Default page size for tokens
+	}
+	offset := int(req.Offset)
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Apply pagination
+	var paginatedTokens []*models.Token
+	if offset < len(tokens) {
+		end := offset + limit
+		if end > len(tokens) {
+			end = len(tokens)
+		}
+		paginatedTokens = tokens[offset:end]
+	}
+
 	// Convert to typed response
-	tokenInfos := make([]types.TokenInfo, 0, len(tokens))
-	for _, token := range tokens {
+	tokenInfos := make([]types.TokenInfo, 0, len(paginatedTokens))
+	for _, token := range paginatedTokens {
 		tokenInfo := types.TokenInfo{
 			TokenID:           token.TokenID,
 			ProcessInstanceID: token.ProcessInstanceID,
@@ -390,10 +513,13 @@ func (a *processComponentAdapter) GetTokensTyped(req *types.TokenListRequest) (*
 		tokenInfos = append(tokenInfos, tokenInfo)
 	}
 
+	// Calculate if there are more items
+	hasMore := offset+limit < totalCount
+
 	return &types.TokenListResponse{
 		Tokens:     tokenInfos,
-		TotalCount: int32(len(tokenInfos)),
-		HasMore:    false, // Pagination not implemented yet
+		TotalCount: int32(totalCount),
+		HasMore:    hasMore,
 	}, nil
 }
 

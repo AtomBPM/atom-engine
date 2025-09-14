@@ -552,7 +552,7 @@ class ${toPascalCase(task.type)}Worker {
   
   async process${toPascalCase(task.name)}(variables) {
     // Implementation here
-    throw new Error('Not implemented');
+    throw new Error('Implementation required - connect to AtomBPMN engine');
   }
 }
 `;

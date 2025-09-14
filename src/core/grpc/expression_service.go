@@ -418,8 +418,6 @@ func countFailedTests(results []*expressionpb.TestResult) int {
 	return count
 }
 
-// Other methods with stub implementations for now
-
 func (s *expressionServiceServer) EvaluateBatch(ctx context.Context, req *expressionpb.EvaluateBatchRequest) (*expressionpb.EvaluateBatchResponse, error) {
 	logger.Info("EvaluateBatch gRPC request",
 		logger.Int("expressions_count", len(req.Expressions)),

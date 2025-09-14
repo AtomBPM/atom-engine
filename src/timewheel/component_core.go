@@ -12,17 +12,25 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"atom-engine/src/core/models"
 	"atom-engine/src/storage"
 )
 
-// StorageInterface defines storage operations for timers
-// Определяет операции storage для таймеров
+// StorageInterface defines storage operations for timers and tokens
+// Определяет операции storage для таймеров и токенов
 type StorageInterface interface {
+	// Timer operations
+	// Операции с таймерами
 	SaveTimer(timer *storage.TimerRecord) error
 	LoadTimer(timerID string) (*storage.TimerRecord, error)
 	LoadAllTimers() ([]*storage.TimerRecord, error)
 	DeleteTimer(timerID string) error
 	UpdateTimer(timer *storage.TimerRecord) error
+
+	// Token operations (needed for boundary timer scope checks)
+	// Операции с токенами (нужны для проверки scope boundary таймеров)
+	LoadToken(tokenID string) (*models.Token, error)
+	LoadTokensByProcessInstance(processInstanceID string) ([]*models.Token, error)
 }
 
 // Component represents timewheel component for core integration

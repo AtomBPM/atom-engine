@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,9 +20,11 @@ import (
 	"atom-engine/src/core/auth"
 	"atom-engine/src/core/interfaces"
 	"atom-engine/src/core/logger"
+	coremodels "atom-engine/src/core/models"
 	"atom-engine/src/core/restapi/handlers"
 	"atom-engine/src/core/restapi/middleware"
 	"atom-engine/src/core/restapi/models"
+	"atom-engine/src/core/restapi/utils"
 )
 
 // Config holds REST API server configuration
@@ -144,9 +147,9 @@ type TimewheelComponentInterface interface {
 }
 
 type StorageComponentInterface interface {
-	LoadAllTokens() ([]*Token, error)
-	LoadTokensByState(state TokenState) ([]*Token, error)
-	LoadToken(tokenID string) (*Token, error)
+	LoadAllTokens() ([]*coremodels.Token, error)
+	LoadTokensByState(state coremodels.TokenState) ([]*coremodels.Token, error)
+	LoadToken(tokenID string) (*coremodels.Token, error)
 }
 
 type ProcessComponentInterface interface {
@@ -154,24 +157,10 @@ type ProcessComponentInterface interface {
 	GetProcessInstanceStatus(instanceID string) (*ProcessInstanceResult, error)
 	CancelProcessInstance(instanceID string, reason string) error
 	ListProcessInstances(statusFilter string, processKeyFilter string, limit int) ([]*ProcessInstanceResult, error)
-	GetActiveTokens(instanceID string) ([]*Token, error)
+	GetActiveTokens(instanceID string) ([]*coremodels.Token, error)
 }
 
-// Placeholder types
-type Token struct {
-	ID                string     `json:"id"`
-	State             TokenState `json:"state"`
-	ElementID         string     `json:"element_id"`
-	ProcessInstanceID string     `json:"process_instance_id"`
-}
-
-type TokenState string
-
-const (
-	TokenStateActive    TokenState = "ACTIVE"
-	TokenStateCompleted TokenState = "COMPLETED"
-	TokenStateCancelled TokenState = "CANCELLED"
-)
+// ProcessInstanceResult represents process instance result from component
 
 type ProcessInstanceResult struct {
 	InstanceID      string                 `json:"instance_id"`
@@ -435,43 +424,42 @@ func (s *Server) daemonEventsHandler(c *gin.Context) {
 		return
 	}
 
-	// For now, return system status and info as "events"
-	// This can be enhanced later to get actual event logs from storage
-	status, err := s.coreInterface.GetSystemStatus()
+	// Get real system events from storage instead of status/info stub
+	// Получаем реальные системные события из storage вместо заглушки status/info
+	limit := 50 // Default limit for recent events
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 && parsedLimit <= 100 {
+			limit = parsedLimit
+		}
+	}
+
+	events, err := storageComp.LoadSystemEvents(limit)
 	if err != nil {
-		logger.Error("Failed to get system status for events", logger.String("error", err.Error()))
-		apiErr := models.InternalServerError("Failed to get system events")
+		logger.Error("Failed to load system events from storage", logger.String("error", err.Error()))
+		apiErr := models.InternalServerError("Failed to load system events")
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
 		return
 	}
 
-	info, err := s.coreInterface.GetSystemInfo()
-	if err != nil {
-		logger.Error("Failed to get system info for events", logger.String("error", err.Error()))
-		apiErr := models.InternalServerError("Failed to get system events")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
-		return
+	// Convert events to API format
+	// Конвертируем события в формат API
+	eventList := make([]map[string]interface{}, 0, len(events))
+	for _, event := range events {
+		eventList = append(eventList, map[string]interface{}{
+			"id":         event.ID,
+			"type":       event.EventType,
+			"status":     event.Status,
+			"message":    event.Message,
+			"timestamp":  event.CreatedAt.Format(time.RFC3339),
+			"created_at": event.CreatedAt.Unix(),
+		})
 	}
 
-	// Return recent system events information
+	// Return actual system events from storage
 	response := map[string]interface{}{
-		"events": []map[string]interface{}{
-			{
-				"type":      "system_status",
-				"timestamp": time.Now(),
-				"status":    status.Status,
-				"health":    status.Health,
-				"message":   "System status check",
-			},
-			{
-				"type":      "system_info",
-				"timestamp": time.Now(),
-				"version":   info.Version,
-				"uptime":    info.Uptime,
-				"message":   "System information",
-			},
-		},
-		"note": "Use CLI 'atomd events' for detailed event logs from storage",
+		"events":      eventList,
+		"total_count": len(events),
+		"limit":       limit,
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(response, requestID))
@@ -482,5 +470,5 @@ func (s *Server) getRequestID(c *gin.Context) string {
 	if requestID := c.GetHeader("X-Request-ID"); requestID != "" {
 		return requestID
 	}
-	return fmt.Sprintf("req_%d", time.Now().UnixNano())
+	return utils.GenerateSecureRequestID("req")
 }

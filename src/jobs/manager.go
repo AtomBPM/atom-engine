@@ -554,7 +554,24 @@ func (jm *JobManager) ListJobs(ctx context.Context, filter *ListJobsFilter) ([]*
 			continue
 		}
 
-		// Filter by process key (process definition lookup not implemented)
+		// Filter by process key
+		if filter.ProcessKey != "" {
+			// Load process instance to get process key
+			instance, err := jm.storage.LoadProcessInstance(job.ProcessInstanceID)
+			if err != nil {
+				// Skip job if we can't load process instance
+				jm.logger.Debug("Failed to load process instance for job filtering",
+					logger.String("job_id", job.ID),
+					logger.String("process_instance_id", job.ProcessInstanceID),
+					logger.String("error", err.Error()))
+				continue
+			}
+
+			// Compare process keys
+			if instance.ProcessKey != filter.ProcessKey {
+				continue
+			}
+		}
 
 		filteredJobs = append(filteredJobs, job)
 

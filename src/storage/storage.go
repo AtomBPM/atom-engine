@@ -25,6 +25,7 @@ type Storage interface {
 	Stop() error
 	IsReady() bool
 	LogSystemEvent(eventType, status, message string) error
+	LoadSystemEvents(limit int) ([]*SystemEventRecord, error)
 	GetStatus() (*StorageStatus, error)
 	GetInfo() (*StorageInfo, error)
 

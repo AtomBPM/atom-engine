@@ -18,5 +18,4 @@ type TokenManagerInterface interface {
 	// Token operations
 	GetActiveTokens(instanceID string) ([]*models.Token, error)
 	GetTokensByProcessInstance(instanceID string) ([]*models.Token, error)
-	ExecuteToken(token *models.Token) error
 }

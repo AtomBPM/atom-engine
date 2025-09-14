@@ -314,7 +314,6 @@ func (h *ParserHandler) ListProcesses(c *gin.Context) {
 	// Parse pagination parameters
 	pageStr := c.DefaultQuery("page", "1")
 	limitStr := c.DefaultQuery("limit", "20")
-	_ = c.Query("tenant_id") // tenantID for future implementation
 
 	paginationHelper := utils.NewPaginationHelper()
 	params, apiErr := paginationHelper.ParseAndValidate(pageStr, limitStr)
@@ -724,8 +723,9 @@ func (h *ParserHandler) GetBPMNStats(c *gin.Context) {
 		}
 	}
 
-	// Add processes by type placeholder
+	// Add processes by status/type from parser stats
 	stats.ProcessesByType = make(map[string]int32)
+	stats.ProcessesByType["active"] = resp.ActiveProcesses
 	stats.ProcessesByType["total"] = resp.TotalProcesses
 
 	logger.Info("BPMN stats retrieved",

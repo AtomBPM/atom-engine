@@ -214,7 +214,6 @@ func (bee *BoundaryEventExecutor) handleMessageBoundaryEvent(token *models.Token
 		NextElements: nextElements,
 		WaitingFor:   fmt.Sprintf("message:%s", messageName),
 		Completed:    false,
-		// DEAD CODE: Activity cancellation for interrupting events IS IMPLEMENTED in BoundaryTimerManager
 	}, nil
 }
 
@@ -348,7 +347,6 @@ func (bee *BoundaryEventExecutor) executeRegularBoundaryEvent(token *models.Toke
 		TokenUpdated: false,
 		NextElements: nextElements,
 		Completed:    false,
-		// DEAD CODE: Activity cancellation for interrupting boundary events IS IMPLEMENTED in BoundaryEventExecutor
 	}, nil
 }
 

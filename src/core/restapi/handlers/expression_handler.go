@@ -11,6 +11,8 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -32,6 +34,11 @@ type ExpressionCoreInterface interface {
 	GetExpressionComponent() interface{}
 	// JSON Message Routing would be used if expression component uses async communication
 	SendMessage(componentName, messageJSON string) error
+}
+
+// ExpressionComponent interface for expression evaluation
+type ExpressionComponent interface {
+	EvaluateExpression(expression string, variables map[string]interface{}) (interface{}, error)
 }
 
 // Expression data types
@@ -366,14 +373,32 @@ func (h *ExpressionHandler) ParseExpression(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("expression", req.Expression))
 
-	// Mock parsing result (would integrate with actual expression parser)
+	// Parse expression by attempting evaluation (validates syntax)
+	expComp := h.getExpressionComponent()
+	if expComp == nil {
+		parsed := &ParsedExpression{
+			AST:   nil,
+			Valid: false,
+			Error: "Expression component not available",
+		}
+		c.JSON(http.StatusServiceUnavailable, models.SuccessResponse(parsed, requestID))
+		return
+	}
+
+	// Test parse by evaluating with empty context
+	_, err := expComp.EvaluateExpression(req.Expression, map[string]interface{}{})
+
 	parsed := &ParsedExpression{
 		AST: map[string]interface{}{
-			"type":       "expression",
-			"expression": req.Expression,
-			"parsed":     true,
+			"type":         "expression",
+			"expression":   req.Expression,
+			"syntax_check": err == nil,
 		},
-		Valid: true,
+		Valid: err == nil,
+	}
+
+	if err != nil {
+		parsed.Error = err.Error()
 	}
 
 	logger.Info("Expression parsed successfully",
@@ -419,10 +444,27 @@ func (h *ExpressionHandler) ValidateExpression(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("expression", req.Expression))
 
-	// Mock validation result (would integrate with actual expression validator)
+	// Validate expression using expression component
+	expComp := h.getExpressionComponent()
+	if expComp == nil {
+		validation := &ValidationResult{
+			Valid:  false,
+			Errors: []string{"Expression component not available"},
+		}
+		c.JSON(http.StatusServiceUnavailable, models.SuccessResponse(validation, requestID))
+		return
+	}
+
+	// Test validation by attempting evaluation with empty context
+	_, err := expComp.EvaluateExpression(req.Expression, map[string]interface{}{})
+
 	validation := &ValidationResult{
-		Valid:        true,
+		Valid:        err == nil,
 		Dependencies: h.extractVariableNames(req.Expression),
+	}
+
+	if err != nil {
+		validation.Errors = []string{err.Error()}
 	}
 
 	logger.Info("Expression validated",
@@ -576,7 +618,7 @@ func (h *ExpressionHandler) GetSupportedFunctions(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("category", category))
 
-	// Get supported functions (mock implementation)
+	// Get supported functions from component
 	functions := h.getSupportedFunctions(category)
 
 	logger.Info("Supported functions retrieved",
@@ -664,16 +706,72 @@ func (h *ExpressionHandler) convertToBoolean(value interface{}) bool {
 }
 
 func (h *ExpressionHandler) extractVariableNames(expression string) []string {
-	// Extract variable names using regex pattern for common cases
+	// Extract variable names using comprehensive regex patterns
 	variables := []string{}
+	variableSet := make(map[string]bool)
 
-	// Improved regex-based extraction for variable references
-	// In real implementation, this would use proper FEEL parser
+	// FEEL variable patterns
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`\b([a-zA-Z_][a-zA-Z0-9_]*)\b`),                                 // Simple identifiers: name, user_id, etc.
+		regexp.MustCompile(`\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\.\s*([a-zA-Z_][a-zA-Z0-9_]*)\b`), // Object properties: user.name
+		regexp.MustCompile(`\$\{([^}]+)\}`),                                                // Variable interpolation: ${variable}
+		regexp.MustCompile(`@"([^"]+)"`),                                                   // Quoted variables: @"variable name"
+	}
+
+	for _, pattern := range patterns {
+		matches := pattern.FindAllStringSubmatch(expression, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				// Skip FEEL keywords and functions
+				variable := match[1]
+				if !h.isFEELKeyword(variable) && !h.isBuiltinFunction(variable) {
+					if !variableSet[variable] {
+						variables = append(variables, variable)
+						variableSet[variable] = true
+					}
+				}
+
+				// For object.property patterns, also add object part
+				if len(match) > 2 {
+					objectVar := match[1]
+					if !h.isFEELKeyword(objectVar) && !variableSet[objectVar] {
+						variables = append(variables, objectVar)
+						variableSet[objectVar] = true
+					}
+				}
+			}
+		}
+	}
+
 	return variables
 }
 
+// isFEELKeyword checks if a string is a FEEL keyword
+func (h *ExpressionHandler) isFEELKeyword(word string) bool {
+	keywords := map[string]bool{
+		"true": true, "false": true, "null": true, "and": true, "or": true, "not": true,
+		"if": true, "then": true, "else": true, "for": true, "in": true, "some": true,
+		"every": true, "satisfies": true, "instance": true, "of": true, "function": true,
+		"external": true, "return": true, "between": true,
+	}
+	return keywords[strings.ToLower(word)]
+}
+
+// isBuiltinFunction checks if a string is a FEEL builtin function
+func (h *ExpressionHandler) isBuiltinFunction(word string) bool {
+	functions := map[string]bool{
+		"upper": true, "lower": true, "substring": true, "length": true, "contains": true,
+		"starts": true, "ends": true, "matches": true, "replace": true, "split": true,
+		"number": true, "string": true, "date": true, "time": true, "duration": true,
+		"years": true, "months": true, "days": true, "hours": true, "minutes": true, "seconds": true,
+		"sum": true, "mean": true, "min": true, "max": true, "count": true, "sort": true,
+		"reverse": true, "index": true, "union": true, "distinct": true, "flatten": true,
+		"product": true, "median": true, "stddev": true, "mode": true, "all": true, "any": true,
+	}
+	return functions[strings.ToLower(word)]
+}
+
 func (h *ExpressionHandler) getSupportedFunctions(category string) *SupportedFunctions {
-	// Real implementation using expression component
 	functions := []FunctionInfo{
 		{
 			Name:        "upper",
@@ -764,4 +862,19 @@ func (h *ExpressionHandler) getRequestID(c *gin.Context) string {
 		return requestID
 	}
 	return utils.GenerateSecureRequestID("expression")
+}
+
+// getExpressionComponent returns expression component with proper casting
+func (h *ExpressionHandler) getExpressionComponent() ExpressionComponent {
+	expressionCompInterface := h.coreInterface.GetExpressionComponent()
+	if expressionCompInterface == nil {
+		return nil
+	}
+
+	expressionComp, ok := expressionCompInterface.(ExpressionComponent)
+	if !ok {
+		return nil
+	}
+
+	return expressionComp
 }

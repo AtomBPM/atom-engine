@@ -10,6 +10,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -309,13 +310,22 @@ func (d *DaemonCommand) ExpressionTest() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// For now, create a simple test case from provided JSON context
-	// In real usage, this would parse test_cases JSON properly
+	// Parse test cases JSON to extract expected results
+	var testCaseData map[string]interface{}
+	expectedResult := "true" // Default fallback
+
+	if err := json.Unmarshal([]byte(testCasesJSON), &testCaseData); err == nil {
+		if expected, exists := testCaseData["expected"]; exists {
+			expectedBytes, _ := json.Marshal(expected)
+			expectedResult = string(expectedBytes)
+		}
+	}
+
 	testCases := []*expressionpb.TestCase{
 		{
 			Name:           "test1",
 			Context:        testCasesJSON,
-			ExpectedResult: "true", // FIXME: Parse expected result from test cases JSON
+			ExpectedResult: expectedResult,
 		},
 	}
 

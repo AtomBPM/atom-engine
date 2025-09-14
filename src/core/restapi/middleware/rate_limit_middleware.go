@@ -95,7 +95,7 @@ func (rlm *RateLimitMiddleware) Handler() gin.HandlerFunc {
 				return
 			}
 		} else {
-			// Use built-in rate limiter (if implemented)
+			// Use built-in rate limiter
 			if !rlm.checkBuiltinRateLimit(c, clientID) {
 				return
 			}
@@ -158,12 +158,12 @@ func (rlm *RateLimitMiddleware) checkAuthRateLimit(c *gin.Context, clientID stri
 // checkBuiltinRateLimit checks rate limit using built-in limiter
 func (rlm *RateLimitMiddleware) checkBuiltinRateLimit(c *gin.Context, clientID string) bool {
 	now := time.Now()
-	
+
 	// Get or create client info
 	rlm.clientsMutex.RLock()
 	client, exists := rlm.clients[clientID]
 	rlm.clientsMutex.RUnlock()
-	
+
 	if !exists {
 		// Create new client info
 		client = &clientInfo{
@@ -174,11 +174,11 @@ func (rlm *RateLimitMiddleware) checkBuiltinRateLimit(c *gin.Context, clientID s
 		rlm.clients[clientID] = client
 		rlm.clientsMutex.Unlock()
 	}
-	
+
 	// Lock client for update
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
-	
+
 	// Clean old requests (sliding window)
 	cutoff := now.Add(-rlm.config.WindowSize)
 	validRequests := make([]time.Time, 0)
@@ -188,7 +188,7 @@ func (rlm *RateLimitMiddleware) checkBuiltinRateLimit(c *gin.Context, clientID s
 		}
 	}
 	client.requests = validRequests
-	
+
 	// Check if limit exceeded
 	if len(client.requests) >= rlm.config.RequestsPerMinute {
 		logger.Warn("Rate limit exceeded",
@@ -198,16 +198,16 @@ func (rlm *RateLimitMiddleware) checkBuiltinRateLimit(c *gin.Context, clientID s
 			logger.Int("limit", rlm.config.RequestsPerMinute))
 		return false
 	}
-	
+
 	// Record this request
 	client.requests = append(client.requests, now)
-	
+
 	logger.Debug("Rate limit check passed",
 		logger.String("client_id", clientID),
 		logger.String("path", c.Request.URL.Path),
 		logger.Int("requests_count", len(client.requests)),
 		logger.Int("limit", rlm.config.RequestsPerMinute))
-	
+
 	return true
 }
 
@@ -365,10 +365,10 @@ func (rlm *RateLimitMiddleware) GetRateLimitInfo(clientID string) *RateLimitInfo
 func (rlm *RateLimitMiddleware) CleanupOldClients() {
 	now := time.Now()
 	cleanupCutoff := now.Add(-rlm.config.WindowSize * 2) // Clean clients with no activity for 2 windows
-	
+
 	rlm.clientsMutex.Lock()
 	defer rlm.clientsMutex.Unlock()
-	
+
 	for clientID, client := range rlm.clients {
 		client.mutex.Lock()
 		// Check if client has any recent activity
@@ -380,7 +380,7 @@ func (rlm *RateLimitMiddleware) CleanupOldClients() {
 			}
 		}
 		client.mutex.Unlock()
-		
+
 		// Remove client if no recent activity
 		if !hasRecentActivity {
 			delete(rlm.clients, clientID)
@@ -395,7 +395,7 @@ func (rlm *RateLimitMiddleware) StartCleanupWorker() {
 	go func() {
 		ticker := time.NewTicker(rlm.config.WindowSize)
 		defer ticker.Stop()
-		
+
 		for range ticker.C {
 			rlm.CleanupOldClients()
 		}

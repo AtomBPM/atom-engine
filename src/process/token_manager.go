@@ -234,13 +234,3 @@ func (tm *TokenManager) MergeTokens(tokenIDs []string, targetElementID string) (
 func (tm *TokenManager) GetTokenStatistics() (map[string]int, error) {
 	return tm.tokenOperations.GetTokenStatistics()
 }
-
-// ExecuteToken executes token (delegated to engine in practice)
-// Выполняет токен (делегируется в engine на практике)
-func (tm *TokenManager) ExecuteToken(token *models.Token) error {
-	// This method will be implemented by the component's engine
-	// but interface requires it for TokenManagerInterface
-	// Этот метод будет реализован engine компонента
-	// но интерфейс требует его для TokenManagerInterface
-	return fmt.Errorf("ExecuteToken should be called through component engine")
-}

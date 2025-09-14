@@ -9,7 +9,9 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package process
 
 import (
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"atom-engine/src/core/logger"
@@ -113,9 +115,9 @@ func (jc *JobCallbacks) handleJobFailure(token *models.Token, jobID, elementID, 
 		logger.String("token_id", token.TokenID),
 		logger.String("error_message", errorMessage))
 
-	// Extract error code from error message (simple pattern matching)
-	// In real BPMN errors, error code might be passed differently
-	errorCode := extractErrorCodeFromMessage(errorMessage)
+	// Extract error code from multiple sources (variables first, then message parsing)
+	// Извлекаем код ошибки из нескольких источников (сначала variables, затем парсинг сообщения)
+	errorCode := jc.extractBPMNErrorCode(variables, errorMessage)
 
 	logger.Info("Extracted error code from job failure",
 		logger.String("token_id", token.TokenID),
@@ -177,27 +179,127 @@ func (jc *JobCallbacks) handleJobFailure(token *models.Token, jobID, elementID, 
 }
 
 // extractErrorCodeFromMessage extracts error code from error message
-// Simple implementation - in production might need more sophisticated parsing
+// Advanced implementation with multiple parsing strategies for production use
 func extractErrorCodeFromMessage(errorMessage string) string {
-	// For now, check if message contains common HTTP error codes
-	if contains(errorMessage, "404") {
-		return "404"
+	if errorMessage == "" {
+		return "GENERAL_ERROR"
 	}
-	if contains(errorMessage, "500") {
-		return "500"
+
+	// Strategy 1: Try to parse as JSON error structure
+	if strings.HasPrefix(strings.TrimSpace(errorMessage), "{") {
+		if code := extractErrorCodeFromJSON(errorMessage); code != "" {
+			return code
+		}
 	}
-	if contains(errorMessage, "403") {
-		return "403"
+
+	// Strategy 2: Use regex patterns for various error code formats
+	patterns := []struct {
+		pattern string
+		group   int
+	}{
+		{`(?i)error[_\s]*code[:\s]*([A-Z0-9_]+)`, 1}, // "error_code: CODE" or "errorCode: CODE"
+		{`(?i)code[:\s]*([A-Z0-9_]+)`, 1},            // "code: CODE"
+		{`\b([A-Z][A-Z0-9_]{2,})\b`, 1},              // BPMN error codes (3+ chars, starts with letter)
+		{`\b(4[0-9]{2}|5[0-9]{2})\b`, 1},             // HTTP 4xx, 5xx codes
+		{`\b([0-9]{3})\b`, 1},                        // Generic 3-digit codes
+		{`(?i)(timeout|connection[_\s]*failed|not[_\s]*found|unauthorized|forbidden|internal[_\s]*error)`, 1}, // Common error patterns
 	}
-	// Default error code if no specific code found
+
+	for _, p := range patterns {
+		if re, err := regexp.Compile(p.pattern); err == nil {
+			if matches := re.FindStringSubmatch(errorMessage); len(matches) > p.group {
+				code := strings.ToUpper(strings.TrimSpace(matches[p.group]))
+				if code != "" {
+					// Normalize common patterns
+					switch code {
+					case "TIMEOUT":
+						return "TIMEOUT_ERROR"
+					case "CONNECTION_FAILED", "CONNECTIONFAILED":
+						return "CONNECTION_ERROR"
+					case "NOT_FOUND", "NOTFOUND":
+						return "NOT_FOUND_ERROR"
+					case "UNAUTHORIZED":
+						return "AUTH_ERROR"
+					case "FORBIDDEN":
+						return "PERMISSION_ERROR"
+					case "INTERNAL_ERROR", "INTERNALERROR":
+						return "INTERNAL_ERROR"
+					default:
+						return code
+					}
+				}
+			}
+		}
+	}
+
+	// Strategy 3: Legacy simple substring matching for backwards compatibility
+	errorLower := strings.ToLower(errorMessage)
+	commonCodes := map[string]string{
+		"404":        "NOT_FOUND_ERROR",
+		"401":        "AUTH_ERROR",
+		"403":        "PERMISSION_ERROR",
+		"500":        "INTERNAL_ERROR",
+		"503":        "SERVICE_UNAVAILABLE",
+		"timeout":    "TIMEOUT_ERROR",
+		"connection": "CONNECTION_ERROR",
+		"network":    "NETWORK_ERROR",
+	}
+
+	for pattern, code := range commonCodes {
+		if strings.Contains(errorLower, pattern) {
+			return code
+		}
+	}
+
 	return "GENERAL_ERROR"
 }
 
-// contains checks if string contains substring (case insensitive)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			strings.Contains(strings.ToLower(s), strings.ToLower(substr)))))
+// extractErrorCodeFromJSON attempts to extract error code from JSON error message
+func extractErrorCodeFromJSON(jsonStr string) string {
+	var errorObj map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &errorObj); err != nil {
+		return ""
+	}
+
+	// Try common JSON error field names
+	fields := []string{"errorCode", "error_code", "code", "status", "type"}
+	for _, field := range fields {
+		if value, exists := errorObj[field]; exists {
+			if strVal, ok := value.(string); ok && strVal != "" {
+				return strings.ToUpper(strings.TrimSpace(strVal))
+			}
+			if numVal, ok := value.(float64); ok {
+				return fmt.Sprintf("%.0f", numVal)
+			}
+		}
+	}
+
+	return ""
+}
+
+// extractBPMNErrorCode extracts error code from BPMN context using multiple sources
+// Извлекает код ошибки из BPMN контекста используя несколько источников
+func (jc *JobCallbacks) extractBPMNErrorCode(variables map[string]interface{}, errorMessage string) string {
+	// Priority 1: Check variables for explicit error code (BPMN standard)
+	// Приоритет 1: Проверяем variables на явный код ошибки (стандарт BPMN)
+	if variables != nil {
+		// Standard BPMN error code field names
+		errorCodeFields := []string{"errorCode", "error_code", "bpmnErrorCode", "code", "errorType"}
+		for _, field := range errorCodeFields {
+			if value, exists := variables[field]; exists {
+				if strVal, ok := value.(string); ok && strVal != "" {
+					return strings.ToUpper(strings.TrimSpace(strVal))
+				}
+				if numVal, ok := value.(float64); ok {
+					return fmt.Sprintf("%.0f", numVal)
+				}
+			}
+		}
+	}
+
+	// Priority 2: Parse error message using advanced patterns
+	// Приоритет 2: Парсим сообщение об ошибке используя продвинутые паттерны
+	return extractErrorCodeFromMessage(errorMessage)
 }
 
 // activateErrorBoundaryFlow activates the error boundary event flow

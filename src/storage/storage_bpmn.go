@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
 )
@@ -271,14 +272,17 @@ func (bs *BadgerStorage) SaveBPMNFile(processID, filename string, content []byte
 		return fmt.Errorf("database not initialized")
 	}
 
-	// Create file record
-	// Создаем запись файла
+	// Create file record with proper timestamp
+	// Создаем запись файла с правильным timestamp
+	now := time.Now()
 	fileRecord := map[string]interface{}{
-		"process_id": processID,
-		"filename":   filename,
-		"content":    content,
-		"size":       len(content),
-		"saved_at":   "now", // Would use proper timestamp in production
+		"process_id":    processID,
+		"filename":      filename,
+		"content":       content,
+		"size":          len(content),
+		"saved_at":      now.Format(time.RFC3339), // ISO 8601 timestamp
+		"saved_at_unix": now.Unix(),               // Unix timestamp for easy querying
+		"saved_at_nano": now.UnixNano(),           // Nanosecond precision for uniqueness
 	}
 
 	data, err := json.Marshal(fileRecord)

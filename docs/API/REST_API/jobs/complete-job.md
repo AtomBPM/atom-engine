@@ -441,7 +441,7 @@ class GenericWorker {
   
   // Переопределяется в наследниках
   async executeJobLogic(job) {
-    throw new Error('executeJobLogic must be implemented by subclass');
+    throw new Error('executeJobLogic must be overridden by subclass');
   }
   
   stop() {
