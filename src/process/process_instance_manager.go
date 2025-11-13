@@ -117,6 +117,16 @@ func (pim *ProcessInstanceManager) CancelProcessInstance(instanceID string, reas
 		}
 	}
 
+	// Cancel all timers for this process instance
+	// Отменяем все таймеры для этого экземпляра процесса
+	if err := pim.component.CancelAllTimersForProcessInstance(instanceID); err != nil {
+		logger.Error("Failed to cancel all process timers",
+			logger.String("instance_id", instanceID),
+			logger.String("error", err.Error()))
+		// Continue even if timer cancellation fails
+		// Продолжаем даже если отмена таймеров не удалась
+	}
+
 	logger.Info("Process instance canceled", logger.String("instance_id", instanceID))
 	return nil
 }

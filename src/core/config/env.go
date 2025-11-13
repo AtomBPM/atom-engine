@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -92,12 +93,50 @@ func (c *Config) LoadFromEnv() {
 	}
 }
 
-// GetConfigPath returns configuration file path from environment or default
-// Возвращает путь к файлу конфигурации из окружения или по умолчанию
+// GetConfigPath returns configuration file path from environment or searches in common locations
+// Возвращает путь к файлу конфигурации из окружения или ищет в стандартных местах
 func GetConfigPath() string {
+	// Priority 1: Environment variable
 	if env := os.Getenv("ATOM_CONFIG_PATH"); env != "" {
 		return env
 	}
+
+	// Priority 2: Search in common locations
+	candidates := []string{
+		"build/config/config.yaml",   // Build directory
+		"config/config.yaml",         // Source config directory
+		"./build/config/config.yaml", // Explicit relative
+		"./config/config.yaml",       // Explicit relative
+	}
+
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err == nil {
+		// Add absolute paths based on current directory
+		candidates = append(candidates,
+			filepath.Join(cwd, "build/config/config.yaml"),
+			filepath.Join(cwd, "config/config.yaml"),
+		)
+	}
+
+	// Get executable directory
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		candidates = append(candidates,
+			filepath.Join(execDir, "config/config.yaml"),
+			filepath.Join(execDir, "../config/config.yaml"),
+			filepath.Join(execDir, "../../config/config.yaml"),
+		)
+	}
+
+	// Check each candidate
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	// Default fallback
 	return "build/config/config.yaml"
 }
 

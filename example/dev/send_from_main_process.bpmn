@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0n7rla3" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.37.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+  <bpmn:collaboration id="Collaboration_1mmctzj">
+    <bpmn:participant id="p_Send_from_main_process" processRef="Send_from_main_process_ID" />
+  </bpmn:collaboration>
+  <bpmn:process id="Send_from_main_process_ID" name="Send_from_main_process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_0c6z0fs</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_0nddij2" messageRef="Message_2s4blf8" />
+    </bpmn:startEvent>
+    <bpmn:intermediateCatchEvent id="Event_0j0xjpo">
+      <bpmn:incoming>Flow_0c6z0fs</bpmn:incoming>
+      <bpmn:outgoing>Flow_0uhu2do</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_11j1upt">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30s</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_0c6z0fs" sourceRef="StartEvent_1" targetRef="Event_0j0xjpo" />
+    <bpmn:sequenceFlow id="Flow_0uhu2do" sourceRef="Event_0j0xjpo" targetRef="END_Send_from_main_process" />
+    <bpmn:endEvent id="END_Send_from_main_process" name="END_Send_from_main_process">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="Send_to_main_process" retries="3" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0uhu2do</bpmn:incoming>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_0tljm46" />
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:message id="Message_2s4blf8" name="Send_from_main_process" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1mmctzj">
+      <bpmndi:BPMNShape id="Participant_0hbin4e_di" bpmnElement="p_Send_from_main_process" isHorizontal="true">
+        <dc:Bounds x="160" y="55" width="600" height="250" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_03jcmyc_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="232" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1xfnby1_di" bpmnElement="Event_0j0xjpo">
+        <dc:Bounds x="402" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1tu6owg_di" bpmnElement="END_Send_from_main_process">
+        <dc:Bounds x="582" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="558" y="205" width="84" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0c6z0fs_di" bpmnElement="Flow_0c6z0fs">
+        <di:waypoint x="268" y="180" />
+        <di:waypoint x="402" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0uhu2do_di" bpmnElement="Flow_0uhu2do">
+        <di:waypoint x="438" y="180" />
+        <di:waypoint x="582" y="180" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

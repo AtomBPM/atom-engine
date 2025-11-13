@@ -38,7 +38,7 @@ message ListJobsRequest {
 
 #### Поля:
 - **job_type** (string, optional): Фильтр по типу задания (например, "service-task")
-- **state** (string, optional): Фильтр по состоянию ("ACTIVATABLE", "ACTIVATED", "COMPLETED", "FAILED", "CANCELLED")
+- **state** (string, optional): Фильтр по состоянию ("PENDING", "ACTIVATABLE", "ACTIVATED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED")
 - **worker** (string, optional): Фильтр по имени воркера
 - **limit** (int32, optional): Количество записей на страницу (по умолчанию 10, максимум 1000)
 - **offset** (int32, optional): Смещение для пагинации (по умолчанию 0)
@@ -1408,8 +1408,10 @@ module.exports = {
 ## Фильтры и сортировка
 
 ### Доступные состояния
-- **ACTIVATABLE**: Задания готовые к активации
-- **ACTIVATED**: Задания назначенные воркерам
+- **PENDING**: Задания созданы и ожидают активации
+- **ACTIVATABLE**: Задания готовые к активации (синоним для PENDING)
+- **ACTIVATED**: Задания активированы и назначены воркерам (синоним для RUNNING)
+- **RUNNING**: Задания выполняются воркерами
 - **COMPLETED**: Успешно завершенные задания
 - **FAILED**: Провалившиеся задания
 - **CANCELLED**: Отмененные задания

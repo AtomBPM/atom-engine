@@ -343,7 +343,7 @@ func (h *JobsHandler) ListJobs(c *gin.Context) {
 
 	// Validate state filter
 	if state != "" {
-		validStates := []string{"activatable", "activated", "completed", "failed", "cancelled"}
+		validStates := []string{"pending", "activatable", "activated", "running", "completed", "failed", "cancelled"}
 		if apiErr := h.validator.ValidateStringEnum(state, "state", validStates); apiErr != nil {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse(
 				models.NewValidationError("Invalid state filter", []models.ValidationError{*apiErr}),

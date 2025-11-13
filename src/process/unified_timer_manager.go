@@ -9,10 +9,13 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package process
 
 import (
+	"context"
 	"fmt"
 
+	"atom-engine/src/core/logger"
 	"atom-engine/src/core/models"
 	"atom-engine/src/storage"
+	"atom-engine/src/timewheel"
 )
 
 // UnifiedTimerManager implements TimerCallbackManagerInterface
@@ -106,6 +109,114 @@ func (utm *UnifiedTimerManager) LinkBoundaryTimerToToken(tokenID, timerID string
 // Отменяет boundary таймеры для токена
 func (utm *UnifiedTimerManager) CancelBoundaryTimersForToken(tokenID string) error {
 	return utm.boundaryTimerManager.CancelBoundaryTimersForToken(tokenID)
+}
+
+// CancelAllTimersForProcessInstance cancels all scheduled timers for process instance
+// Отменяет все запланированные таймеры для экземпляра процесса
+func (utm *UnifiedTimerManager) CancelAllTimersForProcessInstance(instanceID string) error {
+	// Get core interface to access timewheel
+	// Получаем core interface для доступа к timewheel
+	core := utm.component.GetCore()
+	if core == nil {
+		return fmt.Errorf("core interface not available")
+	}
+
+	timewheelComp := core.GetTimewheelComponentInterface()
+	if timewheelComp == nil {
+		return fmt.Errorf("timewheel component not available")
+	}
+
+	// Type assertion to get timewheel component with ProcessMessage method
+	// Приведение типа чтобы получить timewheel компонент с методом ProcessMessage
+	type TimewheelComponent interface {
+		ProcessMessage(ctx context.Context, messageJSON string) error
+	}
+
+	twComp, ok := timewheelComp.(TimewheelComponent)
+	if !ok {
+		return fmt.Errorf("timewheel component does not implement ProcessMessage")
+	}
+
+	// Load all timers from storage
+	// Загружаем все таймеры из storage
+	allTimers, err := utm.storage.LoadAllTimers()
+	if err != nil {
+		return fmt.Errorf("failed to load timers: %w", err)
+	}
+
+	// Filter timers by process instance ID and scheduled state
+	// Фильтруем таймеры по ID экземпляра процесса и статусу SCHEDULED
+	var timersToCancel []*storage.TimerRecord
+	for _, timer := range allTimers {
+		if timer.ProcessInstanceID == instanceID && timer.State == "SCHEDULED" {
+			timersToCancel = append(timersToCancel, timer)
+		}
+	}
+
+	if len(timersToCancel) == 0 {
+		logger.Debug("No scheduled timers found for process instance",
+			logger.String("instance_id", instanceID))
+		return nil
+	}
+
+	logger.Info("Canceling process timers",
+		logger.String("instance_id", instanceID),
+		logger.Int("timer_count", len(timersToCancel)))
+
+	// Cancel each timer with panic recovery
+	// Отменяем каждый таймер с восстановлением от паник
+	ctx := context.Background()
+	for _, timer := range timersToCancel {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Panic occurred while canceling process timer",
+						logger.String("instance_id", instanceID),
+						logger.String("timer_id", timer.ID),
+						logger.String("panic", fmt.Sprintf("%v", r)))
+				}
+			}()
+
+			// Create cancel timer message
+			// Создаем сообщение отмены таймера
+			cancelMessage, err := timewheel.CreateCancelTimerMessage(timer.ID)
+			if err != nil {
+				logger.Error("Failed to create cancel timer message",
+					logger.String("timer_id", timer.ID),
+					logger.String("error", err.Error()))
+				return
+			}
+
+			// Send cancel message to timewheel
+			// Отправляем сообщение отмены в timewheel
+			if err := twComp.ProcessMessage(ctx, cancelMessage); err != nil {
+				logger.Error("Failed to cancel timer in timewheel",
+					logger.String("timer_id", timer.ID),
+					logger.String("error", err.Error()))
+				// Continue to mark as canceled in storage even if timewheel fails
+				// Продолжаем помечать как отмененный в storage даже если timewheel не удалось
+			} else {
+				logger.Debug("Timer canceled successfully",
+					logger.String("timer_id", timer.ID),
+					logger.String("instance_id", instanceID))
+			}
+
+			// Mark timer as canceled in storage
+			// Помечаем таймер как отмененный в storage
+			timer.State = "CANCELLED"
+			if err := utm.storage.UpdateTimer(timer); err != nil {
+				logger.Error("Failed to update timer state in storage",
+					logger.String("timer_id", timer.ID),
+					logger.String("error", err.Error()))
+			}
+		}()
+	}
+
+	logger.Info("Process timers cancellation completed",
+		logger.String("instance_id", instanceID),
+		logger.Int("canceled_count", len(timersToCancel)))
+
+	return nil
 }
 
 // GetBPMNProcessForToken loads BPMN process for token

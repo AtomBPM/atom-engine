@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -531,9 +532,19 @@ func (jm *JobManager) ListJobs(ctx context.Context, filter *ListJobsFilter) ([]*
 	jm.logger.Debug("Listing jobs with filter", logger.String("worker", filter.Worker))
 
 	// Convert state filter to JobStatus
+	// Normalize to uppercase and map synonyms to actual database statuses
 	var status models.JobStatus
 	if filter.State != "" {
-		status = models.JobStatus(filter.State)
+		normalizedState := strings.ToUpper(filter.State)
+		// Map API synonyms to actual database statuses
+		switch normalizedState {
+		case "ACTIVATABLE":
+			status = models.JobStatusPending
+		case "ACTIVATED":
+			status = models.JobStatusRunning
+		default:
+			status = models.JobStatus(normalizedState)
+		}
 	}
 
 	jobs, err := jm.storage.ListJobsByType(ctx, filter.Type, status, filter.Limit)

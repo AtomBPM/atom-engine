@@ -63,6 +63,7 @@ type ComponentInterface interface {
 	CreateBoundaryTimerWithID(timerRequest *TimerRequest) (string, error)
 	LinkBoundaryTimerToToken(tokenID, timerID string) error
 	CancelBoundaryTimersForToken(tokenID string) error
+	CancelAllTimersForProcessInstance(instanceID string) error
 
 	// Job management
 	HandleJobCallback(jobID, elementID, tokenID, status, errorMessage string, variables map[string]interface{}) error
@@ -435,6 +436,10 @@ func (c *Component) LinkBoundaryTimerToToken(tokenID, timerID string) error {
 
 func (c *Component) CancelBoundaryTimersForToken(tokenID string) error {
 	return c.timerManager.CancelBoundaryTimersForToken(tokenID)
+}
+
+func (c *Component) CancelAllTimersForProcessInstance(instanceID string) error {
+	return c.timerManager.CancelAllTimersForProcessInstance(instanceID)
 }
 
 func (c *Component) GetBPMNProcessForToken(token *models.Token) (map[string]interface{}, error) {

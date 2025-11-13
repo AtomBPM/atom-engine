@@ -14,7 +14,7 @@ GET /api/v1/jobs
 ## Параметры запроса (Query Parameters)
 
 ### Фильтрация
-- `status` (string): Фильтр по статусу (`ACTIVE`, `COMPLETED`, `FAILED`, `CANCELLED`)
+- `state` (string): Фильтр по состоянию (`pending`, `activatable`, `activated`, `running`, `completed`, `failed`, `cancelled`)
 - `type` (string): Фильтр по типу задания
 - `worker` (string): Фильтр по worker ID
 - `process_instance_id` (string): Фильтр по экземпляру процесса
@@ -42,7 +42,7 @@ curl -X GET "http://localhost:27555/api/v1/jobs" \
 
 ### Активные задания
 ```bash
-curl -X GET "http://localhost:27555/api/v1/jobs?status=ACTIVE" \
+curl -X GET "http://localhost:27555/api/v1/jobs?state=activatable" \
   -H "X-API-Key: your-api-key-here"
 ```
 
@@ -54,14 +54,20 @@ curl -X GET "http://localhost:27555/api/v1/jobs?type=payment-processor&page_size
 
 ### Задания за последний час
 ```bash
-curl -X GET "http://localhost:27555/api/v1/jobs?period=1h&status=COMPLETED" \
+curl -X GET "http://localhost:27555/api/v1/jobs?period=1h&state=completed" \
+  -H "X-API-Key: your-api-key-here"
+```
+
+### Pending задания конкретного типа
+```bash
+curl -X GET "http://localhost:27555/api/v1/jobs?state=pending&type=payment_notification" \
   -H "X-API-Key: your-api-key-here"
 ```
 
 ### JavaScript
 ```javascript
 const params = new URLSearchParams({
-  status: 'ACTIVE',
+  state: 'activatable',
   type: 'email-service',
   page: '1',
   page_size: '20'
@@ -244,13 +250,13 @@ const jobs = await response.json();
 ## Статусы заданий
 
 ### Возможные статусы
-- `CREATED` - Задание создано, но не активировано
-- `ACTIVE` - Задание активно и выполняется worker'ом
-- `COMPLETED` - Задание успешно завершено
-- `FAILED` - Задание провалено (нет попыток)
-- `FAILED_RETRYABLE` - Задание провалено, но есть попытки
-- `CANCELLED` - Задание отменено
-- `TIMEOUT` - Задание превысило таймаут
+- `pending` - Задание создано и ожидает активации
+- `activatable` - Задание готово к активации (синоним для `pending`)
+- `activated` - Задание активировано и назначено worker'у (синоним для `running`)
+- `running` - Задание выполняется worker'ом
+- `completed` - Задание успешно завершено
+- `failed` - Задание провалено (нет попыток)
+- `cancelled` - Задание отменено
 
 ## Использование
 
@@ -258,9 +264,9 @@ const jobs = await response.json();
 ```javascript
 async function getJobDashboardData() {
   const [activeJobs, recentJobs, failedJobs] = await Promise.all([
-    fetch('/api/v1/jobs?status=ACTIVE').then(r => r.json()),
+    fetch('/api/v1/jobs?state=activatable').then(r => r.json()),
     fetch('/api/v1/jobs?period=1h').then(r => r.json()),
-    fetch('/api/v1/jobs?status=FAILED&period=24h').then(r => r.json())
+    fetch('/api/v1/jobs?state=failed&period=24h').then(r => r.json())
   ]);
   
   return {
@@ -376,7 +382,7 @@ async function analyzeJobTypes() {
 ### Failed Jobs Investigation
 ```javascript
 async function investigateFailures() {
-  const response = await fetch('/api/v1/jobs?status=FAILED&period=24h&page_size=100');
+  const response = await fetch('/api/v1/jobs?state=failed&period=24h&page_size=100');
   const data = await response.json();
   
   const failureAnalysis = {
@@ -440,7 +446,7 @@ class JobMonitor {
   
   async checkJobChanges() {
     try {
-      const response = await fetch(`/api/v1/jobs?status=ACTIVE&created_after=${this.lastCheck.toISOString()}`);
+      const response = await fetch(`/api/v1/jobs?state=activatable&created_after=${this.lastCheck.toISOString()}`);
       const data = await response.json();
       
       const currentActiveJobs = new Map();

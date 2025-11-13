@@ -149,11 +149,17 @@ func (d *DaemonCommand) Stop() error {
 // Показывает статус демона
 func (d *DaemonCommand) Status() error {
 	if d.isRunning() {
-		pid, _ := d.readPIDFile()
-		logger.Debug("Daemon status checked",
-			logger.String("status", "running"),
-			logger.Int("pid", pid))
-		fmt.Printf("Daemon is %s with PID: %d\n", ColorizeDaemonStatus("running"), pid)
+		pid, err := d.readPIDFile()
+		if err == nil {
+			logger.Debug("Daemon status checked",
+				logger.String("status", "running"),
+				logger.Int("pid", pid))
+			fmt.Printf("Daemon is %s with PID: %d\n", ColorizeDaemonStatus("running"), pid)
+		} else {
+			logger.Debug("Daemon status checked via gRPC",
+				logger.String("status", "running"))
+			fmt.Printf("Daemon is %s (checked via gRPC)\n", ColorizeDaemonStatus("running"))
+		}
 	} else {
 		logger.Debug("Daemon status checked", logger.String("status", "not running"))
 		fmt.Printf("Daemon is %s\n", ColorizeDaemonStatus("not running"))
@@ -171,24 +177,42 @@ func (d *DaemonCommand) ShowEvents() error {
 // isRunning checks if daemon is running
 // Проверяет работает ли демон
 func (d *DaemonCommand) isRunning() bool {
+	// Try to check via PID file first
 	pid, err := d.readPIDFile()
-	if err != nil {
-		return false
+	if err == nil {
+		process, err := os.FindProcess(pid)
+		if err == nil {
+			err = process.Signal(syscall.Signal(0))
+			if err == nil {
+				return true
+			}
+		}
 	}
 
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
+	// Fallback: check via gRPC connection
+	conn, err := d.grpcClient.Connect()
+	if err == nil {
+		conn.Close()
+		return true
 	}
 
-	err = process.Signal(syscall.Signal(0))
-	return err == nil
+	return false
+}
+
+// getPIDFilePath returns path to PID file from config
+// Возвращает путь к PID файлу из конфигурации
+func (d *DaemonCommand) getPIDFilePath() string {
+	cfg, err := config.LoadConfigWithEnv()
+	if err != nil {
+		return "/tmp/atomd.pid"
+	}
+	return cfg.GetPIDFilePath()
 }
 
 // writePIDFile writes process ID to file
 // Записывает ID процесса в файл
 func (d *DaemonCommand) writePIDFile(pid int) error {
-	pidFile := "/tmp/atomd.pid"
+	pidFile := d.getPIDFilePath()
 	file, err := os.Create(pidFile)
 	if err != nil {
 		return err
@@ -202,7 +226,7 @@ func (d *DaemonCommand) writePIDFile(pid int) error {
 // readPIDFile reads process ID from file
 // Читает ID процесса из файла
 func (d *DaemonCommand) readPIDFile() (int, error) {
-	pidFile := "/tmp/atomd.pid"
+	pidFile := d.getPIDFilePath()
 	content, err := os.ReadFile(pidFile)
 	if err != nil {
 		return 0, err
@@ -216,7 +240,7 @@ func (d *DaemonCommand) readPIDFile() (int, error) {
 // removePIDFile removes PID file
 // Удаляет файл с PID
 func (d *DaemonCommand) removePIDFile() {
-	pidFile := "/tmp/atomd.pid"
+	pidFile := d.getPIDFilePath()
 	os.Remove(pidFile)
 }
 

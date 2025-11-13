@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1dw0m0o" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.37.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+  <bpmn:collaboration id="payment_notification_v1">
+    <bpmn:documentation>Процесс который создает задачу на отправку уведомления после прохождения таймера</bpmn:documentation>
+    <bpmn:extensionElements>
+      <zeebe:properties>
+        <zeebe:property name="camundaModeler:exampleOutputJson" value="" />
+      </zeebe:properties>
+    </bpmn:extensionElements>
+    <bpmn:participant id="Participant_payment_notification" processRef="Process_payment_notification" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_payment_notification" name="Payment Notification" isExecutable="true">
+    <bpmn:extensionElements>
+      <zeebe:versionTag value="v1" />
+    </bpmn:extensionElements>
+    <bpmn:endEvent id="EndEvent_payment_notification" name="EndEvent payment notification">
+      <bpmn:incoming>Flow_0qis111</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0gxeeu1" sourceRef="notification_datetime" targetRef="Service_Task_payment_notification" />
+    <bpmn:sequenceFlow id="Flow_0qis111" sourceRef="Service_Task_payment_notification" targetRef="EndEvent_payment_notification" />
+    <bpmn:sequenceFlow id="Flow_1q10xge" sourceRef="StartEvent_payment_notification_v1" targetRef="notification_datetime" />
+    <bpmn:intermediateCatchEvent id="notification_datetime" name="Notification Datetime">
+      <bpmn:documentation>Дата и время срабатывания тригера</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:properties>
+          <zeebe:property name="camundaModeler:exampleOutputJson" value="" />
+        </zeebe:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1q10xge</bpmn:incoming>
+      <bpmn:outgoing>Flow_0gxeeu1</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_1o0z6ze">
+        <bpmn:timeDate xsi:type="bpmn:tFormalExpression">=datetime</bpmn:timeDate>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:startEvent id="StartEvent_payment_notification_v1" name="StartEvent payment notification v1">
+      <bpmn:extensionElements>
+        <zeebe:properties>
+          <zeebe:property name="camundaModeler:exampleOutputJson" value="{&#10;&#34;application_id&#34;:&#34;426111616679&#34;,&#10;&#34;datetime&#34;:&#34;2025-12-12T12:03:18.798Z&#34;&#10;}" />
+        </zeebe:properties>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_1q10xge</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Service_Task_payment_notification" name="Task payment notification">
+      <bpmn:documentation>Задача на отправку уведомления о необходимости оплаты</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="payment_notification" retries="3" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0gxeeu1</bpmn:incoming>
+      <bpmn:outgoing>Flow_0qis111</bpmn:outgoing>
+    </bpmn:serviceTask>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="payment_notification_v1">
+      <bpmndi:BPMNShape id="Participant_0c2kooo_di" bpmnElement="Participant_payment_notification" isHorizontal="true">
+        <dc:Bounds x="160" y="85" width="600" height="250" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_payment_notification_v1">
+        <dc:Bounds x="222" y="192" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="207" y="235" width="68" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0ozzv4l_di" bpmnElement="notification_datetime">
+        <dc:Bounds x="322" y="192" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="314" y="235" width="55" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0p6qagu_di" bpmnElement="EndEvent_payment_notification">
+        <dc:Bounds x="652" y="192" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="645" y="235" width="53" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0zoiz29_di" bpmnElement="Service_Task_payment_notification">
+        <dc:Bounds x="450" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1q10xge_di" bpmnElement="Flow_1q10xge">
+        <di:waypoint x="258" y="210" />
+        <di:waypoint x="322" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0gxeeu1_di" bpmnElement="Flow_0gxeeu1">
+        <di:waypoint x="358" y="210" />
+        <di:waypoint x="450" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0qis111_di" bpmnElement="Flow_0qis111">
+        <di:waypoint x="550" y="210" />
+        <di:waypoint x="652" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

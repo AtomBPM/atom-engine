@@ -25,6 +25,9 @@ type TimerCallbackManagerInterface interface {
 	LinkBoundaryTimerToToken(tokenID, timerID string) error
 	CancelBoundaryTimersForToken(tokenID string) error
 
+	// Process timer operations
+	CancelAllTimersForProcessInstance(instanceID string) error
+
 	// Helper operations
 	GetBPMNProcessForToken(token *models.Token) (map[string]interface{}, error)
 }
