@@ -32,10 +32,21 @@ build:
 	mkdir -p build/config
 	mkdir -p build/data/base
 	@echo "Copying configuration files..."
-	cp config/config.yaml build/config/config.yaml
+	@if [ -f config/config.yaml ]; then \
+		echo "Using existing config/config.yaml..."; \
+		cp config/config.yaml build/config/config.yaml; \
+	else \
+		echo "Using config/config.yaml.example..."; \
+		cp config/config.yaml.example build/config/config.yaml; \
+	fi
 ifeq ($(COPY_ENV_FILE),true)
-	@echo "Copying environment example to .env..."
-	cp config/env.example build/config/.env
+	@if [ -f config/.env ]; then \
+		echo "Using existing config/.env..."; \
+		cp config/.env build/config/.env; \
+	else \
+		echo "Using config/env.example..."; \
+		cp config/env.example build/config/.env; \
+	fi
 else
 	@echo "Skipping .env file copy (production mode)"
 endif

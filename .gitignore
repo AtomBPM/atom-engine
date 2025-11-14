@@ -80,3 +80,6 @@ bpmn_test/
 build_number.txt
 test/
 example/
+config/config.yaml
+config/.env
+.gitignore
