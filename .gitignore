@@ -79,3 +79,4 @@ bpmn_test/
 # Build versioning
 build_number.txt
 test/
+example/

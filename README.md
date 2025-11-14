@@ -1,11 +1,11 @@
-# AtomBPMN Engine 🚀
+# AtomBPM Engine 🚀
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org/)
 [![Zeebe Compatible](https://img.shields.io/badge/Zeebe-8.x%20Compatible-green.svg)](https://zeebe.io/)
 [![gRPC](https://img.shields.io/badge/gRPC-Enabled-orange.svg)](https://grpc.io/)
 
-**AtomBPMN Engine** is a high-performance, cloud-native BPMN 2.0 process engine written in Go. It provides full compatibility with Zeebe 8.x APIs while offering enhanced performance, autonomous component architecture, and comprehensive process orchestration capabilities.
+**AtomBPM Engine** is a high-performance, cloud-native BPMN 2.0 process engine written in Go. It provides full compatibility with Zeebe 8.x APIs while offering enhanced performance, autonomous component architecture, and comprehensive process orchestration capabilities.
 
 ## ✨ Key Features
 
@@ -22,7 +22,7 @@
 
 ## 🏗️ Architecture Overview
 
-AtomBPMN Engine follows a microservices-inspired architecture with autonomous components communicating through gRPC and JSON protocols.
+AtomBPM Engine follows a microservices-inspired architecture with autonomous components communicating through gRPC and JSON protocols.
 
 ### Core Components
 
@@ -39,7 +39,7 @@ AtomBPMN Engine follows a microservices-inspired architecture with autonomous co
 
 ```mermaid
 graph TB
-    subgraph "AtomBPMN Engine Architecture"
+    subgraph "AtomBPM Engine Architecture"
         CLI["CLI Interface<br/>Commands & Management"]
         
         subgraph "Core Layer"
@@ -117,7 +117,7 @@ make build
 go build -o build/atomd .
 ```
 
-### Running AtomBPMN Engine
+### Running AtomBPM Engine
 
 ```bash
 # Start the daemon
@@ -258,7 +258,7 @@ logging:
 
 ## 🎯 Expression Engine
 
-AtomBPMN supports rich expression evaluation:
+AtomBPM supports rich expression evaluation:
 
 ```bash
 # Simple arithmetic
@@ -298,7 +298,7 @@ atomd expression eval "amount > 1000 and status == 'approved'" '{"amount": 1500,
 
 ### Zeebe 8.x Compatible APIs
 
-AtomBPMN Engine provides 100% API compatibility with Zeebe 8.x:
+AtomBPM Engine provides 100% API compatibility with Zeebe 8.x:
 
 - **Process Deployment** - Deploy BPMN processes
 - **Process Instance Management** - Start, cancel, query instances
@@ -451,7 +451,7 @@ go test -cover ./...
 This project is dual-licensed:
 
 - **Open Source**: AGPL-3.0 License
-- **Commercial**: AtomBPMN Commercial License
+- **Commercial**: AtomBPM Commercial License
 
 For commercial licensing, please contact: Matreska Market LLC
 
@@ -473,7 +473,7 @@ For commercial licensing, please contact: Matreska Market LLC
 
 ## 🇷🇺 Описание на русском языке
 
-**AtomBPMN Engine** - это высокопроизводительный, облачно-ориентированный движок BPMN 2.0 процессов, написанный на Go. Обеспечивает полную совместимость с API Zeebe 8.x, предлагая при этом улучшенную производительность, автономную архитектуру компонентов и всеобъемлющие возможности оркестрации процессов.
+**AtomBPM Engine** - это высокопроизводительный, облачно-ориентированный движок BPMN 2.0 процессов, написанный на Go. Обеспечивает полную совместимость с API Zeebe 8.x, предлагая при этом улучшенную производительность, автономную архитектуру компонентов и всеобъемлющие возможности оркестрации процессов.
 
 ### Ключевые особенности
 
@@ -537,7 +537,7 @@ make build
 
 Проект имеет двойную лицензию:
 - **Открытый исходный код**: Лицензия AGPL-3.0
-- **Коммерческая**: Коммерческая лицензия AtomBPMN
+- **Коммерческая**: Коммерческая лицензия AtomBPM
 
 ---
 

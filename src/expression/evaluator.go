@@ -21,6 +21,7 @@ type ExpressionEvaluator struct {
 	retriesParser      *RetriesParser
 	engineEvaluator    *EngineEvaluator
 	connectorEvaluator *ConnectorExpressionEvaluator
+	functionEvaluator  *FunctionEvaluator
 }
 
 // NewExpressionEvaluator creates new expression evaluator
@@ -28,17 +29,19 @@ type ExpressionEvaluator struct {
 func NewExpressionEvaluator() *ExpressionEvaluator {
 	logger := logger.NewComponentLogger("expression-evaluator")
 
-	// Create shared VariableEvaluator
-	// Создаем общий VariableEvaluator
+	// Create shared VariableEvaluator and FunctionEvaluator
+	// Создаем общий VariableEvaluator и FunctionEvaluator
 	variableEvaluator := NewVariableEvaluator(logger)
+	functionEvaluator := NewFunctionEvaluator(logger)
 
 	return &ExpressionEvaluator{
 		logger:             logger,
 		variableEvaluator:  variableEvaluator,
 		conditionEvaluator: NewConditionEvaluatorWithVariableEvaluator(logger, variableEvaluator),
 		retriesParser:      NewRetriesParserWithVariableEvaluator(logger, variableEvaluator),
-		engineEvaluator:    NewEngineEvaluatorWithVariableEvaluator(logger, variableEvaluator),
+		engineEvaluator:    NewEngineEvaluatorWithEvaluators(logger, variableEvaluator, functionEvaluator),
 		connectorEvaluator: NewConnectorExpressionEvaluator(logger),
+		functionEvaluator:  functionEvaluator,
 	}
 }
 
@@ -94,4 +97,10 @@ func (ee *ExpressionEvaluator) GetEngineEvaluator() *EngineEvaluator {
 // Возвращает парсер повторов
 func (ee *ExpressionEvaluator) GetRetriesParser() *RetriesParser {
 	return ee.retriesParser
+}
+
+// GetFunctionEvaluator returns function evaluator
+// Возвращает оценщик функций
+func (ee *ExpressionEvaluator) GetFunctionEvaluator() *FunctionEvaluator {
+	return ee.functionEvaluator
 }

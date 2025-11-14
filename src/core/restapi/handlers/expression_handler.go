@@ -767,6 +767,7 @@ func (h *ExpressionHandler) isBuiltinFunction(word string) bool {
 		"sum": true, "mean": true, "min": true, "max": true, "count": true, "sort": true,
 		"reverse": true, "index": true, "union": true, "distinct": true, "flatten": true,
 		"product": true, "median": true, "stddev": true, "mode": true, "all": true, "any": true,
+		"add": true, "subtract": true,
 	}
 	return functions[strings.ToLower(word)]
 }
@@ -829,6 +830,30 @@ func (h *ExpressionHandler) getSupportedFunctions(category string) *SupportedFun
 			ReturnType:  "date",
 			Examples:    []string{"now()", "now() + duration(\"P1D\")"},
 		},
+		{
+			Name:        "duration",
+			Category:    "date",
+			Description: "Parse ISO 8601 duration",
+			Signature:   "duration(string) -> duration",
+			ReturnType:  "duration",
+			Examples:    []string{"duration(\"P3D\")", "duration(\"PT1H30M\")"},
+		},
+		{
+			Name:        "subtract",
+			Category:    "date",
+			Description: "Subtract duration from datetime",
+			Signature:   "subtract(datetime, duration) -> datetime",
+			ReturnType:  "datetime",
+			Examples:    []string{"subtract(datetime, duration(\"P3D\"))", "subtract(\"2025-12-13T12:18:19.675Z\", duration(\"P3D\"))"},
+		},
+		{
+			Name:        "add",
+			Category:    "date",
+			Description: "Add duration to datetime",
+			Signature:   "add(datetime, duration) -> datetime",
+			ReturnType:  "datetime",
+			Examples:    []string{"add(datetime, duration(\"P1D\"))", "add(\"2025-12-13T12:18:19.675Z\", duration(\"P1D\"))"},
+		},
 	}
 
 	if category != "" {
@@ -847,7 +872,7 @@ func (h *ExpressionHandler) getSupportedFunctions(category string) *SupportedFun
 		"list":    {"count"},
 		"numeric": {"add"},
 		"boolean": {"and"},
-		"date":    {"now"},
+		"date":    {"now", "duration", "subtract", "add"},
 	}
 
 	return &SupportedFunctions{

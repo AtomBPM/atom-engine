@@ -21,6 +21,7 @@ import (
 type EngineEvaluator struct {
 	logger            logger.ComponentLogger
 	variableEvaluator *VariableEvaluator
+	functionEvaluator *FunctionEvaluator
 }
 
 // NewEngineEvaluator creates new expression engine
@@ -29,6 +30,7 @@ func NewEngineEvaluator(logger logger.ComponentLogger) *EngineEvaluator {
 	return &EngineEvaluator{
 		logger:            logger,
 		variableEvaluator: NewVariableEvaluator(logger),
+		functionEvaluator: NewFunctionEvaluator(logger),
 	}
 }
 
@@ -38,6 +40,17 @@ func NewEngineEvaluatorWithVariableEvaluator(logger logger.ComponentLogger, vari
 	return &EngineEvaluator{
 		logger:            logger,
 		variableEvaluator: variableEvaluator,
+		functionEvaluator: NewFunctionEvaluator(logger),
+	}
+}
+
+// NewEngineEvaluatorWithEvaluators creates new expression engine with shared evaluators
+// Создает новый движок выражений с общими evaluators
+func NewEngineEvaluatorWithEvaluators(logger logger.ComponentLogger, variableEvaluator *VariableEvaluator, functionEvaluator *FunctionEvaluator) *EngineEvaluator {
+	return &EngineEvaluator{
+		logger:            logger,
+		variableEvaluator: variableEvaluator,
+		functionEvaluator: functionEvaluator,
 	}
 }
 
@@ -46,6 +59,21 @@ func NewEngineEvaluatorWithVariableEvaluator(logger logger.ComponentLogger, vari
 func (ee *EngineEvaluator) EvaluateExpressionEngine(expression interface{}, variables map[string]interface{}) (interface{}, error) {
 	switch expr := expression.(type) {
 	case string:
+		// Check if it's a FEEL function call
+		// Проверяем является ли это вызовом FEEL функции
+		if ee.functionEvaluator != nil && ee.functionEvaluator.IsFunctionCall(expr) {
+			result, err := ee.functionEvaluator.EvaluateFunction(expr, variables)
+			if err == nil {
+				ee.logger.Debug("Function evaluated successfully",
+					logger.Any("result", result))
+				return result, nil
+			}
+			// Fallback to variable evaluation on error
+			// Возвращаемся к оценке переменных при ошибке
+			ee.logger.Debug("Function evaluation failed, trying variable evaluation",
+				logger.String("error", err.Error()))
+		}
+
 		// Use VariableEvaluator for all string expression processing
 		// Используем VariableEvaluator для всей обработки строковых выражений
 		result, err := ee.variableEvaluator.EvaluateVariable(expr, variables)
