@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" 
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+                  id="Definitions_email_simple" 
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  
+  <bpmn:process id="Process_EmailSimple" name="Simple Email Example" isExecutable="true">
+    
+    <bpmn:startEvent id="StartEvent" name="Start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    
+    <bpmn:serviceTask id="Activity_SendEmail" name="Send Email" 
+                      zeebe:modelerTemplate="io.camunda.connectors.email.v1">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="io.camunda:email:1" retries="3" />
+        <zeebe:ioMapping>
+          <!-- Authentication -->
+          <zeebe:input source="simple" target="authentication.type" />
+          <zeebe:input source="sender@example.com" target="authentication.username" />
+          <zeebe:input source="your-password" target="authentication.password" />
+          
+          <!-- SMTP Configuration -->
+          <zeebe:input source="smtp" target="protocol" />
+          <zeebe:input source="smtp.example.com" target="data.smtpConfig.smtpHost" />
+          <zeebe:input source="=587" target="data.smtpConfig.smtpPort" />
+          <zeebe:input source="STARTTLS" target="data.smtpConfig.smtpCryptographicProtocol" />
+          
+          <!-- Email Data -->
+          <zeebe:input source="sendEmailSmtp" target="data.smtpActionDiscriminator" />
+          <zeebe:input source="sender@example.com" target="data.smtpAction.from" />
+          <zeebe:input source="recipient@example.com" target="data.smtpAction.to" />
+          <zeebe:input source="Hello from Atom Engine" target="data.smtpAction.subject" />
+          <zeebe:input source="PLAIN" target="data.smtpAction.contentType" />
+          <zeebe:input source="This is a simple email from Atom BPMN Engine!" target="data.smtpAction.body" />
+        </zeebe:ioMapping>
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT5S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:endEvent id="EndEvent" name="End">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent" targetRef="Activity_SendEmail" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_SendEmail" targetRef="EndEvent" />
+    
+  </bpmn:process>
+  
+</bpmn:definitions>
+

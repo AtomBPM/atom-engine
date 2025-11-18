@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"mime"
 	"net/smtp"
 	"path/filepath"
@@ -114,6 +115,9 @@ func (ece *EmailConnectorExecutor) Execute(
 		logger.String("token_id", token.TokenID),
 		logger.String("to", config.Action.To),
 		logger.String("subject", config.Action.Subject))
+
+	config.Action.Body = ece.replaceVariables(config.Action.Body, token.Variables)
+	config.Action.Subject = ece.replaceVariables(config.Action.Subject, token.Variables)
 
 	response, err := ece.sendEmail(config)
 	if err != nil {
@@ -279,6 +283,9 @@ func (ece *EmailConnectorExecutor) resolveInputValue(source string, variables ma
 
 	if strings.HasPrefix(source, "=") {
 		expr := strings.TrimPrefix(source, "=")
+		if val, exists := variables[expr]; exists {
+			return val
+		}
 		return expr
 	}
 
@@ -287,6 +294,19 @@ func (ece *EmailConnectorExecutor) resolveInputValue(source string, variables ma
 	}
 
 	return source
+}
+
+// replaceVariables replaces ${variable} syntax with actual values from token variables
+func (ece *EmailConnectorExecutor) replaceVariables(template string, variables map[string]interface{}) string {
+	result := template
+	
+	for key, value := range variables {
+		placeholder := fmt.Sprintf("${%s}", key)
+		valueStr := fmt.Sprintf("%v", value)
+		result = strings.ReplaceAll(result, placeholder, valueStr)
+	}
+	
+	return result
 }
 
 // setConfigValue sets configuration value by target path
@@ -345,7 +365,7 @@ func (ece *EmailConnectorExecutor) setConfigValue(config *EmailConnectorConfig, 
 						config.Action.Subject = valueStr
 					case "contentType":
 						config.Action.ContentType = valueStr
-					case "body":
+					case "body", "htmlBody":
 						config.Action.Body = valueStr
 					case "headers":
 						if headersMap, ok := value.(map[string]interface{}); ok {
@@ -530,7 +550,8 @@ func (ece *EmailConnectorExecutor) writeMessageBody(builder *strings.Builder, co
 		builder.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
 		builder.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 		builder.WriteString("\r\n")
-		builder.WriteString(config.Action.Body)
+		decodedBody := html.UnescapeString(config.Action.Body)
+		builder.WriteString(decodedBody)
 		builder.WriteString("\r\n")
 	}
 }
