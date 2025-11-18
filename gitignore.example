@@ -1,0 +1,132 @@
+# Atom Engine .gitignore Template
+# Шаблон .gitignore для Atom Engine
+# 
+# Usage / Использование:
+# 1. Copy this file to .gitignore: cp gitignore.example .gitignore
+# 2. Скопируйте этот файл в .gitignore: cp gitignore.example .gitignore
+#
+# This file ensures that sensitive and generated files are not committed to the repository
+# Этот файл гарантирует, что чувствительные и сгенерированные файлы не попадут в репозиторий
+
+# Binaries for programs and plugins
+# Бинарные файлы программ и плагинов
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+# Тестовый бинарный файл, собранный с помощью `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+# Вывод инструмента покрытия кода Go, особенно при использовании с LiteIDE
+*.out
+
+# Go workspace file
+# Файл рабочего пространства Go
+go.work
+
+# Build directory (contains compiled binaries and generated files)
+# Директория сборки (содержит скомпилированные бинарники и сгенерированные файлы)
+build/
+!build/.gitkeep
+
+# Database files (BadgerDB and other database files)
+# Файлы базы данных (BadgerDB и другие файлы БД)
+*.db
+*.sqlite
+*.sqlite3
+data/
+logs/
+
+# Environment files (contain sensitive configuration)
+# Файлы окружения (содержат чувствительную конфигурацию)
+.env
+.env.local
+.env.development
+.env.production
+config/.env
+
+# Configuration files (use .example files instead)
+# Файлы конфигурации (используйте .example файлы вместо этого)
+config/config.yaml
+
+# IDE files (editor-specific settings)
+# Файлы IDE (настройки редактора)
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+# Файлы, созданные операционной системой
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+# Временные файлы
+*.tmp
+*.temp
+*.log
+
+# PID files (process ID files)
+# PID файлы (файлы идентификаторов процессов)
+*.pid
+
+# Backup files
+# Файлы резервных копий
+*.backup
+*.bak
+
+# FIX directories (development backlog - internal use only)
+# Директории FIX (беклог разработки - только для внутреннего использования)
+FIX/
+
+# Proto generated files (can be regenerated with `make proto`)
+# Сгенерированные proto файлы (могут быть пересозданы с помощью `make proto`)
+*pb.go
+*_pb2.py
+*_pb2_grpc.py
+
+# Vendor directory (if using Go modules vendor)
+# Директория vendor (если используется vendor для Go modules)
+vendor/
+
+# Test coverage reports
+# Отчеты о покрытии тестами
+coverage.out
+
+# Test directories (internal test files)
+# Тестовые директории (внутренние тестовые файлы)
+bpmn_test/
+test/
+
+# golangci-lint local configuration (use .golangci.yml.example instead)
+# Локальная конфигурация golangci-lint (используйте .golangci.yml.example вместо этого)
+.golangci.yml
+.golangci.yaml
+
+# Security keys and certificates (never commit these!)
+# Ключи безопасности и сертификаты (никогда не коммитьте их!)
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Private SSH keys
+# Приватные SSH ключи
+id_rsa
+id_ed25519
+*.pem
+!*.example.pem
