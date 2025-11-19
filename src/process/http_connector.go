@@ -392,6 +392,39 @@ func (hce *HttpConnectorExecutor) parseIOMappingInputs(
 	return config, nil
 }
 
+// convertToFloat64 attempts to convert value to float64
+// Пытается преобразовать значение в float64
+func (hce *HttpConnectorExecutor) convertToFloat64(val interface{}) (float64, bool) {
+	switch v := val.(type) {
+	case int:
+		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case float32:
+		return float64(v), true
+	case float64:
+		return v, true
+	default:
+		return 0, false
+	}
+}
+
 // evaluateInputValue evaluates input value using expression component
 func (hce *HttpConnectorExecutor) evaluateInputValue(source string, variables map[string]interface{}) interface{} {
 	logger.Debug("Evaluating input value", logger.String("source", source))
@@ -451,6 +484,105 @@ func (hce *HttpConnectorExecutor) evaluateInputValue(source string, variables ma
 			return source
 		}
 
+		// Special handling for addition expressions like "=a + b + c + ..."
+		// Специальная обработка для выражений сложения типа "=a + b + c + ..."
+		if strings.Contains(source, " + ") && strings.HasPrefix(source, "=") {
+			// Extract variable names from expression like "=a + b + c"
+			exprWithoutEquals := strings.TrimPrefix(source, "=")
+			parts := strings.Split(exprWithoutEquals, " + ")
+			if len(parts) >= 2 {
+				// Get all variables
+				varValues := make([]interface{}, 0, len(parts))
+				varNames := make([]string, 0, len(parts))
+				allExist := true
+
+				for _, part := range parts {
+					varName := strings.TrimSpace(part)
+					varValue, exists := variables[varName]
+					if !exists {
+						allExist = false
+						break
+					}
+					varValues = append(varValues, varValue)
+					varNames = append(varNames, varName)
+				}
+
+				if allExist && len(varValues) > 0 {
+					// Check if all are numeric - perform arithmetic addition
+					// Проверяем являются ли все переменные числами - выполняем арифметическое сложение
+					numericValues := make([]float64, 0, len(varValues))
+					allNumeric := true
+					for _, val := range varValues {
+						if num, ok := hce.convertToFloat64(val); ok {
+							numericValues = append(numericValues, num)
+						} else {
+							allNumeric = false
+							break
+						}
+					}
+
+					if allNumeric {
+						sum := 0.0
+						for _, num := range numericValues {
+							sum += num
+						}
+						logger.Debug("Performing numeric addition",
+							logger.String("expression", source),
+							logger.Int("variable_count", len(varNames)),
+							logger.Any("result", sum))
+						return sum
+					}
+
+					// Check if all are maps/objects - merge them all
+					// Проверяем являются ли все переменные объектами - объединяем их все
+					allMaps := true
+					maps := make([]map[string]interface{}, 0, len(varValues))
+					for _, val := range varValues {
+						if valMap, ok := val.(map[string]interface{}); ok {
+							maps = append(maps, valMap)
+						} else {
+							allMaps = false
+							break
+						}
+					}
+
+					if allMaps {
+						// Merge all objects
+						merged := make(map[string]interface{})
+						for _, valMap := range maps {
+							for k, v := range valMap {
+								merged[k] = v // Later objects overwrite earlier ones
+							}
+						}
+						logger.Debug("Merged objects from expression",
+							logger.String("expression", source),
+							logger.Int("variable_count", len(varNames)),
+							logger.Int("merged_keys", len(merged)))
+						return merged
+					}
+
+					// If types don't match for special handling, fall through to normal FEEL evaluation
+					// Если типы не подходят для специальной обработки, продолжаем обычную оценку FEEL
+					logger.Debug("Variables are not all numeric or all objects, using FEEL evaluation",
+						logger.String("expression", source),
+						logger.Int("variable_count", len(varNames)))
+				}
+			}
+		}
+
+		// Special handling for passing all process variables: "=" or "=*"
+		// Специальная обработка для передачи всех переменных процесса: "=" или "=*"
+		if source == "=" || source == "=*" || source == "=all" {
+			logger.Debug("Passing all process variables to body",
+				logger.Int("variable_count", len(variables)))
+			// Return copy of all variables
+			allVars := make(map[string]interface{})
+			for k, v := range variables {
+				allVars[k] = v
+			}
+			return allVars
+		}
+
 		// Evaluate FEEL expression using expression engine
 		result, err := expressionComp.EvaluateExpressionEngine(source, variables)
 		if err != nil {
@@ -458,6 +590,17 @@ func (hce *HttpConnectorExecutor) evaluateInputValue(source string, variables ma
 				logger.String("expression", source),
 				logger.String("error", err.Error()))
 			return source
+		}
+
+		// If result is a string that looks like concatenated maps, try to parse it
+		// Если результат строка похожая на объединенные map, пытаемся распарсить
+		if resultStr, ok := result.(string); ok && strings.Contains(resultStr, " + map[") {
+			// Try to extract and merge maps from string representation
+			// Пытаемся извлечь и объединить map из строкового представления
+			logger.Debug("Result is string with concatenated maps, attempting manual merge",
+				logger.String("expression", source))
+			// Fall back to original expression parsing
+			// Возвращаемся к оригинальной обработке
 		}
 
 		logger.Debug("FEEL expression evaluated successfully",

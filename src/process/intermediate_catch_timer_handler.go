@@ -44,30 +44,12 @@ func (icth *IntermediateCatchTimerHandler) HandleTimerEvent(
 	// Создаем таймер и устанавливаем токен в состояние ожидания
 	timerRequest := icth.createTimerRequest(token, eventDef)
 	if timerRequest != nil {
-
-		// Get outgoing flows for later continuation
-		var nextElements []string
-		if outgoing, exists := element["outgoing"]; exists {
-			if outgoingList, ok := outgoing.([]interface{}); ok {
-				for _, item := range outgoingList {
-					if flowID, ok := item.(string); ok {
-						nextElements = append(nextElements, flowID)
-					}
-				}
-			} else if outgoingStr, ok := outgoing.(string); ok {
-				nextElements = append(nextElements, outgoingStr)
-			}
-		}
-
-		logger.Info("DEBUG: Timer event handler creating execution result",
-			logger.String("element_id", token.CurrentElementID),
-			logger.Int("next_elements_count", len(nextElements)),
-			logger.Any("next_elements", nextElements))
-
+		// NextElements will be processed when timer fires via callback
+		// NextElements будут обработаны когда таймер сработает через callback
 		return &ExecutionResult{
 			Success:      true,
 			TokenUpdated: true,
-			NextElements: nextElements,
+			NextElements: []string{},
 			WaitingFor:   "timer:" + token.CurrentElementID,
 			Completed:    false,
 			TimerRequest: timerRequest,

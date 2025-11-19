@@ -128,3 +128,98 @@ func (ch *CallbackHelper) ProcessCallbackAndContinue(
 
 	return nil
 }
+
+// ProcessCallbackAndContinueWithFlows processes callback with explicit flow IDs
+// Обрабатывает callback с явными ID потоков
+func (ch *CallbackHelper) ProcessCallbackAndContinueWithFlows(
+	token *models.Token,
+	flowIDs []string,
+	variables map[string]interface{},
+) error {
+	// Clear waiting state and merge variables if provided
+	token.ClearWaitingFor()
+	if variables != nil {
+		token.MergeVariables(variables)
+	}
+
+	// Cancel boundary timers
+	if err := ch.component.CancelBoundaryTimersForToken(token.TokenID); err != nil {
+		logger.Error("Failed to cancel boundary timers",
+			logger.String("token_id", token.TokenID),
+			logger.String("error", err.Error()))
+	}
+
+	// Cancel EVENT timers for this token
+	if err := ch.component.CancelEventTimersForToken(token.TokenID); err != nil {
+		logger.Error("Failed to cancel EVENT timers",
+			logger.String("token_id", token.TokenID),
+			logger.String("error", err.Error()))
+	}
+
+	// Update token in storage
+	if err := ch.storage.UpdateToken(token); err != nil {
+		return fmt.Errorf("failed to update token: %w", err)
+	}
+
+	// Find target elements by flow IDs
+	bpmnProcess, err := ch.tokenMovement.bpmnHelper.LoadBPMNProcess(token.ProcessKey)
+	if err != nil {
+		return fmt.Errorf("failed to load BPMN process: %w", err)
+	}
+
+	var targetElements []string
+	for _, flowID := range flowIDs {
+		targetElementID := ch.findTargetElementByFlowID(flowID, bpmnProcess)
+		if targetElementID != "" {
+			targetElements = append(targetElements, targetElementID)
+		}
+	}
+
+	if len(targetElements) == 0 {
+		return fmt.Errorf("no target elements found for flows: %v", flowIDs)
+	}
+
+	// Move token to first target element
+	if len(targetElements) > 0 {
+		token.MoveTo(targetElements[0])
+		if err := ch.storage.UpdateToken(token); err != nil {
+			return fmt.Errorf("failed to update token: %w", err)
+		}
+		return ch.component.ExecuteToken(token)
+	}
+
+	return nil
+}
+
+// GetBPMNHelper returns BPMN helper for external access
+// Возвращает BPMN helper для внешнего доступа
+func (ch *CallbackHelper) GetBPMNHelper() *BPMNHelper {
+	return ch.tokenMovement.bpmnHelper
+}
+
+// findTargetElementByFlowID finds target element by flow ID
+// Находит целевой элемент по ID потока
+func (ch *CallbackHelper) findTargetElementByFlowID(flowID string, bpmnProcess *models.BPMNProcess) string {
+	for elementID, element := range bpmnProcess.Elements {
+		elementMap, ok := element.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		incoming, exists := elementMap["incoming"]
+		if !exists {
+			continue
+		}
+
+		if incomingList, ok := incoming.([]interface{}); ok {
+			for _, item := range incomingList {
+				if incomingFlow, ok := item.(string); ok && incomingFlow == flowID {
+					return elementID
+				}
+			}
+		} else if incomingStr, ok := incoming.(string); ok && incomingStr == flowID {
+			return elementID
+		}
+	}
+	return ""
+}

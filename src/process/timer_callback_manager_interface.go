@@ -24,6 +24,7 @@ type TimerCallbackManagerInterface interface {
 	CreateBoundaryTimerWithID(timerRequest *TimerRequest) (string, error)
 	LinkBoundaryTimerToToken(tokenID, timerID string) error
 	CancelBoundaryTimersForToken(tokenID string) error
+	CancelEventTimersForToken(tokenID string) error
 
 	// Process timer operations
 	CancelAllTimersForProcessInstance(instanceID string) error

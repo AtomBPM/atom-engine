@@ -376,13 +376,27 @@ func (btm *BoundaryTimerManager) HandleBoundaryTimerCallback(
 					logger.String("job_id", jobID))
 			}
 
-			// Clear waiting state
-			// Очищаем состояние ожидания
-			parentToken.ClearWaitingFor()
-		}
+		// Clear waiting state
+		// Очищаем состояние ожидания
+		parentToken.ClearWaitingFor()
+	}
 
-		// Move parent token to boundary event
-		parentToken.MoveTo(elementID)
+	// Cancel EVENT timers for interrupted token
+	// Отменяем EVENT таймеры для прерванного токена
+	if err := btm.component.CancelEventTimersForToken(parentToken.TokenID); err != nil {
+		logger.Error("Failed to cancel EVENT timers for interrupted token",
+			logger.String("token_id", parentToken.TokenID),
+			logger.String("boundary_event_id", elementID),
+			logger.String("error", err.Error()))
+		// Continue execution - EVENT timer cancellation is not critical
+	} else {
+		logger.Info("EVENT timers canceled for interrupted token",
+			logger.String("token_id", parentToken.TokenID),
+			logger.String("boundary_event_id", elementID))
+	}
+
+	// Move parent token to boundary event
+	parentToken.MoveTo(elementID)
 		if err := btm.storage.UpdateToken(parentToken); err != nil {
 			return fmt.Errorf("failed to update parent token: %w", err)
 		}

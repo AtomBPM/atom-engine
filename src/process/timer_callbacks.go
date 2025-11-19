@@ -161,6 +161,34 @@ func (tc *TimerCallbacks) handleEventTimerCallback(timerID, elementID, tokenID s
 		return err
 	}
 
-	// Process callback and continue execution using helper
-	return tc.callbackHelper.ProcessCallbackAndContinue(token, elementID, nil)
+	// Load BPMN process to get next elements
+	bpmnProcess, err := tc.callbackHelper.GetBPMNHelper().LoadBPMNProcess(token.ProcessKey)
+	if err != nil {
+		return fmt.Errorf("failed to load BPMN process: %w", err)
+	}
+
+	// Get element to find outgoing flows
+	element, exists := bpmnProcess.Elements[elementID]
+	if !exists {
+		return fmt.Errorf("element %s not found in process", elementID)
+	}
+
+	// Extract next elements (outgoing flows)
+	var nextElements []string
+	if elementMap, ok := element.(map[string]interface{}); ok {
+		if outgoing, exists := elementMap["outgoing"]; exists {
+			if outgoingList, ok := outgoing.([]interface{}); ok {
+				for _, item := range outgoingList {
+					if flowID, ok := item.(string); ok {
+						nextElements = append(nextElements, flowID)
+					}
+				}
+			} else if outgoingStr, ok := outgoing.(string); ok {
+				nextElements = append(nextElements, outgoingStr)
+			}
+		}
+	}
+
+	// Process callback and continue execution with explicit flow IDs
+	return tc.callbackHelper.ProcessCallbackAndContinueWithFlows(token, nextElements, nil)
 }

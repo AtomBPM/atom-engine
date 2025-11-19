@@ -64,6 +64,7 @@ type ComponentInterface interface {
 	CreateBoundaryTimerWithID(timerRequest *TimerRequest) (string, error)
 	LinkBoundaryTimerToToken(tokenID, timerID string) error
 	CancelBoundaryTimersForToken(tokenID string) error
+	CancelEventTimersForToken(tokenID string) error
 	CancelAllTimersForProcessInstance(instanceID string) error
 
 	// Job management
@@ -465,6 +466,11 @@ func (c *Component) LinkBoundaryTimerToToken(tokenID, timerID string) error {
 
 func (c *Component) CancelBoundaryTimersForToken(tokenID string) error {
 	return c.timerManager.CancelBoundaryTimersForToken(tokenID)
+}
+
+// CancelEventTimersForToken cancels all EVENT timers for token
+func (c *Component) CancelEventTimersForToken(tokenID string) error {
+	return c.timerManager.CancelEventTimersForToken(tokenID)
 }
 
 func (c *Component) CancelAllTimersForProcessInstance(instanceID string) error {

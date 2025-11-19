@@ -219,6 +219,100 @@ func (utm *UnifiedTimerManager) CancelAllTimersForProcessInstance(instanceID str
 	return nil
 }
 
+// CancelEventTimersForToken cancels all EVENT type timers for specific token
+// Отменяет все EVENT таймеры для конкретного токена
+func (utm *UnifiedTimerManager) CancelEventTimersForToken(tokenID string) error {
+	// Load all timers and find EVENT timers for this token
+	allTimers, err := utm.storage.LoadAllTimers()
+	if err != nil {
+		return fmt.Errorf("failed to load timers: %w", err)
+	}
+
+	// Find EVENT timers for this token
+	var eventTimers []*storage.TimerRecord
+	for _, timerRecord := range allTimers {
+		if timerRecord.TimerType == "EVENT" &&
+			timerRecord.TokenID == tokenID &&
+			timerRecord.State == "SCHEDULED" {
+			eventTimers = append(eventTimers, timerRecord)
+		}
+	}
+
+	if len(eventTimers) == 0 {
+		logger.Debug("No scheduled EVENT timers found for token",
+			logger.String("token_id", tokenID))
+		return nil
+	}
+
+	logger.Info("Canceling EVENT timers for token",
+		logger.String("token_id", tokenID),
+		logger.Int("timer_count", len(eventTimers)))
+
+	// Get timewheel component
+	core := utm.component.GetCore()
+	if core == nil {
+		return fmt.Errorf("core interface not available")
+	}
+
+	timewheelComp := core.GetTimewheelComponentInterface()
+	if timewheelComp == nil {
+		return fmt.Errorf("timewheel component not available")
+	}
+
+	// Type assertion to get timewheel component with ProcessMessage method
+	type TimewheelComponent interface {
+		ProcessMessage(ctx context.Context, messageJSON string) error
+	}
+
+	twComp, ok := timewheelComp.(TimewheelComponent)
+	if !ok {
+		return fmt.Errorf("timewheel component does not implement ProcessMessage")
+	}
+
+	// Cancel each EVENT timer
+	ctx := context.Background()
+
+	for _, timer := range eventTimers {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Panic occurred while canceling EVENT timer",
+						logger.String("token_id", tokenID),
+						logger.String("timer_id", timer.ID),
+						logger.String("panic", fmt.Sprintf("%v", r)))
+				}
+			}()
+
+			cancelMessage, err := timewheel.CreateCancelTimerMessage(timer.ID)
+			if err != nil {
+				logger.Error("Failed to create cancel timer message",
+					logger.String("timer_id", timer.ID),
+					logger.String("error", err.Error()))
+				return
+			}
+
+			if err := twComp.ProcessMessage(ctx, cancelMessage); err != nil {
+				logger.Error("Failed to cancel EVENT timer in timewheel",
+					logger.String("timer_id", timer.ID),
+					logger.String("error", err.Error()))
+			} else {
+				logger.Debug("EVENT timer canceled successfully",
+					logger.String("timer_id", timer.ID),
+					logger.String("token_id", tokenID))
+			}
+
+			timer.State = "CANCELLED"
+			if err := utm.storage.UpdateTimer(timer); err != nil {
+				logger.Error("Failed to update EVENT timer state",
+					logger.String("timer_id", timer.ID),
+					logger.String("error", err.Error()))
+			}
+		}()
+	}
+
+	return nil
+}
+
 // GetBPMNProcessForToken loads BPMN process for token
 // Загружает BPMN процесс для токена
 func (utm *UnifiedTimerManager) GetBPMNProcessForToken(token *models.Token) (map[string]interface{}, error) {
