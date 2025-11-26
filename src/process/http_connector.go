@@ -1094,11 +1094,27 @@ func (hce *HttpConnectorExecutor) updateTokenWithHttpResponse(
 		token.Variables = make(map[string]interface{})
 	}
 
+	// Store response with element ID to preserve all responses
+	// Сохраняем ответ с ID элемента для сохранения всех ответов
+	elementID := token.CurrentElementID
+	if elementID != "" {
+		responseKey := fmt.Sprintf("response_%s", elementID)
+		token.Variables[responseKey] = responseObj
+		logger.Debug("Stored HTTP response with element ID",
+			logger.String("token_id", token.TokenID),
+			logger.String("element_id", elementID),
+			logger.String("response_key", responseKey),
+			logger.Int("response_status", response.Status))
+	}
+
 	// Store response in 'response' variable (Camunda 8 standard)
+	// Also store last response for backward compatibility
+	// Также сохраняем последний ответ для обратной совместимости
 	token.Variables["response"] = responseObj
 
 	logger.Info("Updated token variables with HTTP response",
 		logger.String("token_id", token.TokenID),
+		logger.String("element_id", elementID),
 		logger.Int("response_status", response.Status))
 
 	return nil

@@ -9,7 +9,10 @@ This project is dual-licensed under AGPL-3.0 and AtomBPMN Commercial License.
 package expression
 
 import (
+	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"atom-engine/src/core/logger"
@@ -72,34 +75,91 @@ func (ve *VariableEvaluator) EvaluateVariable(
 	if strings.HasPrefix(expression, "=") {
 		feelExpr := expression[1:] // Remove "="
 		
+		// Check if it's a simple variable name (no dots, brackets, operators, etc.)
+		// Проверяем является ли это простым именем переменной (без точек, скобок, операторов и т.д.)
+		trimmedExpr := strings.TrimSpace(feelExpr)
+		if ve.isSimpleVariableName(trimmedExpr) {
+			// Simple variable - return value directly
+			// Простая переменная - возвращаем значение напрямую
+			if value, exists := variables[trimmedExpr]; exists {
+				ve.logger.Debug("FEEL simple variable found",
+					logger.String("variable", trimmedExpr),
+					logger.Any("value", value))
+				return value, nil
+			}
+		}
+		
+		// First, replace all variables in the expression (works for paths, JSON, strings, etc.)
+		// Сначала заменяем все переменные в выражении (работает для путей, JSON, строк и т.д.)
+		replaced := ve.replaceVariablesInString(feelExpr, variables)
+		
+		// Use replaced expression for further processing if variables were replaced
+		// Используем замененное выражение для дальнейшей обработки если переменные были заменены
+		exprToCheck := feelExpr
+		if replaced != feelExpr {
+			exprToCheck = replaced
+			ve.logger.Debug("Variables replaced in FEEL expression",
+				logger.String("original", feelExpr),
+				logger.String("replaced", replaced))
+			
+			// Check if replaced expression is a JSON literal
+			// Проверяем является ли замененное выражение JSON-литералом
+			trimmed := strings.TrimSpace(exprToCheck)
+			if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+				// Try to parse as JSON
+				// Пытаемся распарсить как JSON
+				var jsonValue interface{}
+				if err := json.Unmarshal([]byte(exprToCheck), &jsonValue); err == nil {
+					ve.logger.Debug("JSON literal parsed successfully",
+						logger.String("expression", exprToCheck),
+						logger.Any("result", jsonValue))
+					return jsonValue, nil
+				}
+				// If parsing failed, try to fix JSON by adding quotes to unquoted string values
+				// Если парсинг не удался, пытаемся исправить JSON, добавив кавычки к строковым значениям
+				fixedJSON := ve.fixJSONString(exprToCheck)
+				if fixedJSON != exprToCheck {
+					if err := json.Unmarshal([]byte(fixedJSON), &jsonValue); err == nil {
+						ve.logger.Debug("JSON literal fixed and parsed successfully",
+							logger.String("original", exprToCheck),
+							logger.String("fixed", fixedJSON),
+							logger.Any("result", jsonValue))
+						return jsonValue, nil
+					}
+				}
+				ve.logger.Debug("Failed to parse as JSON, continuing with other checks",
+					logger.String("expression", exprToCheck))
+			}
+		}
+		
 		// Check if it's a logical expression (contains and, or, not)
 		// Проверяем является ли это логическим выражением (содержит and, or, not)
-		if ve.isLogicalExpression(feelExpr) {
-			result, err := ve.evaluateLogicalExpression(feelExpr, variables)
+		if ve.isLogicalExpression(exprToCheck) {
+			result, err := ve.evaluateLogicalExpression(exprToCheck, variables)
 			if err != nil {
 				ve.logger.Warn("Logical expression evaluation failed",
-					logger.String("expression", feelExpr),
+					logger.String("expression", exprToCheck),
 					logger.String("error", err.Error()))
 				return false, err
 			}
 			ve.logger.Debug("Logical expression evaluation successful",
-				logger.String("expression", feelExpr),
+				logger.String("expression", exprToCheck),
 				logger.Bool("result", result))
 			return result, nil
 		}
 		
 		// Check if it's a comparison expression (contains ==, !=, >=, <=, >, <)
 		// Проверяем является ли это выражением сравнения (содержит ==, !=, >=, <=, >, <)
-		if ve.isComparisonExpression(feelExpr) {
-			result, err := ve.evaluateComparison(feelExpr, variables)
+		if ve.isComparisonExpression(exprToCheck) {
+			result, err := ve.evaluateComparison(exprToCheck, variables)
 			if err != nil {
 				ve.logger.Warn("Comparison evaluation failed",
-					logger.String("expression", feelExpr),
+					logger.String("expression", exprToCheck),
 					logger.String("error", err.Error()))
 				return false, err
 			}
 			ve.logger.Debug("Comparison evaluation successful",
-				logger.String("expression", feelExpr),
+				logger.String("expression", exprToCheck),
 				logger.Any("result", result))
 			return result, nil
 		}
@@ -108,19 +168,19 @@ func (ve *VariableEvaluator) EvaluateVariable(
 		// Различаем path выражения и строки с переменными
 		// Path expression: response.body.data (no /)
 		// String with variables: api_url/nodes/params.newid (has /)
-		if (strings.Contains(feelExpr, ".") || strings.Contains(feelExpr, "[")) && !strings.Contains(feelExpr, "/") {
+		if (strings.Contains(exprToCheck, ".") || strings.Contains(exprToCheck, "[")) && !strings.Contains(exprToCheck, "/") {
 			// Use PathNavigator for complex paths (no slashes)
 			// Используем PathNavigator для сложных путей (без слешей)
-			result, err := ve.pathNavigator.NavigatePath(feelExpr, variables)
+			result, err := ve.pathNavigator.NavigatePath(exprToCheck, variables)
 			if err != nil {
 				ve.logger.Warn("Path navigation failed",
-					logger.String("path", feelExpr),
+					logger.String("path", exprToCheck),
 					logger.String("error", err.Error()))
 				// Fallback to existing logic
 				// Откатываемся к существующей логике
 			} else {
 				ve.logger.Debug("Path navigation successful",
-					logger.String("path", feelExpr),
+					logger.String("path", exprToCheck),
 					logger.Any("result", result),
 					logger.String("result_type", fmt.Sprintf("%T", result)))
 				return result, nil
@@ -129,21 +189,22 @@ func (ve *VariableEvaluator) EvaluateVariable(
 		
 		// Handle simple variable access in FEEL
 		// Обрабатываем простой доступ к переменным в FEEL
-		if value, exists := variables[feelExpr]; exists {
+		if value, exists := variables[exprToCheck]; exists {
 			ve.logger.Debug("FEEL variable found",
-				logger.String("variable", feelExpr),
+				logger.String("variable", exprToCheck),
 				logger.Any("value", value))
 			return value, nil
 		}
-		// Try to replace variables in string expression
-		// Пытаемся заменить переменные в строковом выражении
-		replaced := ve.replaceVariablesInString(feelExpr, variables)
+		
+		// If variables were replaced, return the replaced string
+		// Если переменные были заменены, возвращаем замененную строку
 		if replaced != feelExpr {
-			ve.logger.Debug("FEEL expression with variables replaced",
+			ve.logger.Debug("FEEL expression with variables replaced (returning as string)",
 				logger.String("original", feelExpr),
 				logger.String("replaced", replaced))
 			return replaced, nil
 		}
+		
 		ve.logger.Debug("FEEL expression as literal",
 			logger.String("expression", feelExpr))
 		return feelExpr, nil
@@ -683,6 +744,11 @@ func (ve *VariableEvaluator) formatValueForString(value interface{}) string {
 	case nil:
 		return "null"
 	default:
+		// Try to serialize as JSON for maps/slices/structs
+		// Пытаемся сериализовать как JSON для map/slice/struct
+		if jsonBytes, err := json.Marshal(v); err == nil {
+			return string(jsonBytes)
+		}
 		return fmt.Sprintf("%v", v)
 	}
 }
@@ -1208,6 +1274,48 @@ func (ve *VariableEvaluator) applyLogicalOperator(
 	default:
 		return nil
 	}
+}
+
+// fixJSONString tries to fix JSON string by adding quotes to unquoted string values
+// Пытается исправить JSON строку, добавив кавычки к строковым значениям без кавычек
+func (ve *VariableEvaluator) fixJSONString(jsonStr string) string {
+	// Use regex to find unquoted string values after colons
+	// Используем regex для поиска строковых значений без кавычек после двоеточий
+	// Pattern: ": value," or ": value}" where value is not quoted and not a number/boolean/null
+	// Паттерн: ": value," или ": value}" где value не в кавычках и не число/boolean/null
+	
+	// Match: ": word" where word is not in quotes and not a number/boolean/null/object/array
+	// Совпадение: ": word" где word не в кавычках и не число/boolean/null/объект/массив
+	re := regexp.MustCompile(`:\s*([a-zA-Z_][a-zA-Z0-9_/\.-]*)\s*([,}])`)
+	
+	result := re.ReplaceAllStringFunc(jsonStr, func(match string) string {
+		// Extract the value part
+		// Извлекаем часть со значением
+		parts := re.FindStringSubmatch(match)
+		if len(parts) < 3 {
+			return match
+		}
+		
+		value := parts[1]
+		separator := parts[2]
+		
+		// Check if value looks like a string (not a number, boolean, null, or JSON structure)
+		// Проверяем выглядит ли значение как строка (не число, boolean, null или JSON структура)
+		if value != "true" && value != "false" && value != "null" &&
+			!strings.HasPrefix(value, "{") && !strings.HasPrefix(value, "[") {
+			// Check if it's not a number
+			// Проверяем что это не число
+			if _, err := strconv.ParseFloat(value, 64); err != nil {
+				// It's likely a string, add quotes
+				// Это похоже на строку, добавляем кавычки
+				return fmt.Sprintf(`: "%s"%s`, value, separator)
+			}
+		}
+		
+		return match
+	})
+	
+	return result
 }
 
 // toBooleanOrNull converts value to boolean or returns nil for null
