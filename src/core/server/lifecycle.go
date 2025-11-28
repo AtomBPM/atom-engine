@@ -74,6 +74,22 @@ func (c *Core) Start() error {
 		return fmt.Errorf("failed to start timewheel: %w", err)
 	}
 
+	// Initialize and start expression component
+	// Инициализируем и запускаем expression компонент
+	// Expression must be ready before process component, as process uses expressions
+	// Expression должен быть готов до process компонента, так как process использует выражения
+	err = c.expressionComp.Init()
+	if err != nil {
+		logger.Error("Failed to initialize expression component", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to initialize expression component: %w", err)
+	}
+
+	err = c.expressionComp.Start()
+	if err != nil {
+		logger.Error("Failed to start expression component", logger.String("error", err.Error()))
+		return fmt.Errorf("failed to start expression component: %w", err)
+	}
+
 	// Initialize and start process component
 	// Инициализируем и запускаем process компонент
 
@@ -134,20 +150,6 @@ func (c *Core) Start() error {
 	if err != nil {
 		logger.Error("Failed to start messages component", logger.String("error", err.Error()))
 		return fmt.Errorf("failed to start messages component: %w", err)
-	}
-
-	// Initialize and start expression component
-	// Инициализируем и запускаем expression компонент
-	err = c.expressionComp.Init()
-	if err != nil {
-		logger.Error("Failed to initialize expression component", logger.String("error", err.Error()))
-		return fmt.Errorf("failed to initialize expression component: %w", err)
-	}
-
-	err = c.expressionComp.Start()
-	if err != nil {
-		logger.Error("Failed to start expression component", logger.String("error", err.Error()))
-		return fmt.Errorf("failed to start expression component: %w", err)
 	}
 
 	// Initialize and start incidents component

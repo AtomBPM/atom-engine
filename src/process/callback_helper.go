@@ -106,21 +106,30 @@ func (ch *CallbackHelper) ProcessCallbackAndContinue(
 	}
 
 	// Move token to next elements using existing logic
+	// Use token.CurrentElementID instead of elementID parameter
+	// since token is already positioned at the current element
+	currentElementID := token.CurrentElementID
+	if currentElementID == "" {
+		currentElementID = elementID
+	}
+
 	logger.Info("DEBUG: About to move token to next elements",
 		logger.String("token_id", token.TokenID),
-		logger.String("element_id", elementID))
+		logger.String("token_current_element_id", token.CurrentElementID),
+		logger.String("element_id_param", elementID),
+		logger.String("using_element_id", currentElementID))
 
-	if err := ch.tokenMovement.MoveTokenToNextElements(token, elementID); err != nil {
+	if err := ch.tokenMovement.MoveTokenToNextElements(token, currentElementID); err != nil {
 		logger.Error("DEBUG: Failed to move token to next elements",
 			logger.String("token_id", token.TokenID),
-			logger.String("element_id", elementID),
+			logger.String("current_element_id", currentElementID),
 			logger.String("error", err.Error()))
 		return fmt.Errorf("failed to move token to next elements: %w", err)
 	}
 
 	logger.Info("DEBUG: Successfully moved token to next elements",
 		logger.String("token_id", token.TokenID),
-		logger.String("element_id", elementID))
+		logger.String("current_element_id", currentElementID))
 
 	logger.Info("Callback processed successfully - token execution continued",
 		logger.String("element_id", elementID),

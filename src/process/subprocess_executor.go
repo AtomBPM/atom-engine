@@ -615,16 +615,17 @@ func (spe *SubProcessExecutor) createBoundaryTimerForEvent(
 		}
 
 		// Extract timer expression and set appropriate field
-		if timeDuration, exists := timerMap["time_duration"]; exists {
-			if durationStr, ok := timeDuration.(string); ok {
+		// Use same field names as in service_task.go: duration, cycle, date
+		if duration, exists := timerMap["duration"]; exists {
+			if durationStr, ok := duration.(string); ok {
 				timerRequest.TimeDuration = &durationStr
 			}
-		} else if timeCycle, exists := timerMap["time_cycle"]; exists {
-			if cycleStr, ok := timeCycle.(string); ok {
+		} else if cycle, exists := timerMap["cycle"]; exists {
+			if cycleStr, ok := cycle.(string); ok {
 				timerRequest.TimeCycle = &cycleStr
 			}
-		} else if timeDate, exists := timerMap["time_date"]; exists {
-			if dateStr, ok := timeDate.(string); ok {
+		} else if date, exists := timerMap["date"]; exists {
+			if dateStr, ok := date.(string); ok {
 				timerRequest.TimeDate = &dateStr
 			}
 		}
