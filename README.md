@@ -532,7 +532,7 @@ For commercial licensing, please contact: Matreska Market LLC
 
 ```bash
 # Клонирование репозитория
-git clone https://github.com/sembaev-a-a/atom-engine.git
+git clone https://github.com/AtomBPMN/atom-engine.git
 cd atom-engine
 
 # Сборка движка
