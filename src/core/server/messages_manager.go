@@ -18,27 +18,20 @@ import (
 
 // processMessagesResponses processes messages responses in background
 // Обрабатывает ответы messages в фоне
+// NOTE: This function handles ONLY correlation events for CLI, NOT API responses for REST
 func (c *Core) processMessagesResponses() {
 	if c.messagesComp == nil {
 		logger.Warn("Messages component is nil in processMessagesResponses")
 		return
 	}
 
-	responseChannel := c.messagesComp.GetResponseChannel()
-	if responseChannel == nil {
-		logger.Warn("Response channel is nil from messages component")
-		return
-	}
-
-	logger.Info("Messages response processor started")
-
-	for {
-		select {
-		case response := <-responseChannel:
-			logger.Info("Received message response", logger.String("response", response))
-			c.handleMessagesResponse(response)
-		}
-	}
+	// Do NOT read from response channel here - REST handlers need it
+	// This processor is disabled to allow REST API handlers to receive responses
+	// Correlation events will be handled through different mechanism if needed
+	logger.Info("Messages response processor started (disabled for REST API compatibility)")
+	
+	// Block this goroutine but don't consume channel
+	select {}
 }
 
 // handleMessagesResponse handles single messages response

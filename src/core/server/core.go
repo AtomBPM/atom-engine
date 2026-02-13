@@ -11,6 +11,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -208,6 +209,29 @@ func (c *Core) GetProcessComponentTyped() interfaces.ProcessComponentTypedInterf
 // GetMessagesComponentTyped returns typed messages component
 func (c *Core) GetMessagesComponentTyped() interfaces.MessagesComponentInterface {
 	return c.messagesComp
+}
+
+// GetMessageStats returns message statistics without tenantID filter
+func (c *Core) GetMessageStats() (*types.MessageStats, error) {
+	if c.messagesComp == nil {
+		return nil, fmt.Errorf("messages component not available")
+	}
+
+	// Call GetMessageStats with empty tenantID to get all stats
+	stats, err := c.messagesComp.GetMessageStats(context.Background(), "")
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to types.MessageStats
+	return &types.MessageStats{
+		TotalMessages:      int64(stats.TotalMessages),
+		BufferedMessages:   int64(stats.BufferedMessages),
+		ExpiredMessages:    int64(stats.ExpiredMessages),
+		PendingMessages:    0,
+		CorrelatedMessages: 0,
+		TotalSubscriptions: int64(stats.InstancesCreatedToday), // Placeholder
+	}, nil
 }
 
 // GetJobsComponentTyped returns typed jobs component
@@ -458,9 +482,9 @@ func (c *Core) WaitForJobsResponse(timeoutMs int) (string, error) {
 	}
 }
 
-// WaitForMessagesResponse waits for messages response with timeout
-// Ожидает ответ от messages компонента с таймаутом
-func (c *Core) WaitForMessagesResponse(timeoutMs int) (string, error) {
+// WaitForMessagesResponse waits for messages response with timeout and request_id matching
+// Ожидает ответ от messages компонента с таймаутом и matching по request_id
+func (c *Core) WaitForMessagesResponse(timeoutMs int, requestID string) (string, error) {
 	if c.messagesComp == nil {
 		return "", fmt.Errorf("messages component not available")
 	}
@@ -470,18 +494,43 @@ func (c *Core) WaitForMessagesResponse(timeoutMs int) (string, error) {
 		return "", fmt.Errorf("messages response channel not available")
 	}
 
-	timeout := time.Duration(timeoutMs) * time.Millisecond
-	select {
-	case response := <-responseChannel:
-		return response, nil
-	case <-time.After(timeout):
-		return "", fmt.Errorf("timeout waiting for messages response after %dms", timeoutMs)
+	timeout := time.After(time.Duration(timeoutMs) * time.Millisecond)
+	
+	// If no requestID provided (gRPC calls), return first response
+	if requestID == "" {
+		select {
+		case response := <-responseChannel:
+			return response, nil
+		case <-timeout:
+			return "", fmt.Errorf("timeout waiting for messages response after %dms", timeoutMs)
+		}
+	}
+	
+	// REST API calls with request_id matching
+	for {
+		select {
+		case response := <-responseChannel:
+			// Parse response to check request_id
+			var responseMap map[string]interface{}
+			if err := json.Unmarshal([]byte(response), &responseMap); err != nil {
+				continue // Skip malformed responses
+			}
+			
+			// Check if this response matches our request_id
+			if respID, ok := responseMap["request_id"].(string); ok && respID == requestID {
+				return response, nil
+			}
+			// Wrong request_id, continue waiting
+			
+		case <-timeout:
+			return "", fmt.Errorf("timeout waiting for messages response after %dms", timeoutMs)
+		}
 	}
 }
 
-// WaitForIncidentsResponse waits for incidents response with timeout
-// Ожидает ответ от incidents компонента с таймаутом
-func (c *Core) WaitForIncidentsResponse(timeoutMs int) (string, error) {
+// WaitForIncidentsResponse waits for incidents response with timeout and request_id matching
+// Ожидает ответ от incidents компонента с таймаутом и matching по request_id
+func (c *Core) WaitForIncidentsResponse(timeoutMs int, requestID string) (string, error) {
 	if c.incidentsComp == nil {
 		return "", fmt.Errorf("incidents component not available")
 	}
@@ -491,25 +540,37 @@ func (c *Core) WaitForIncidentsResponse(timeoutMs int) (string, error) {
 		return "", fmt.Errorf("incidents response channel not available")
 	}
 
-	// Clear any old responses from channel (non-blocking)
-	// Очищаем старые ответы из канала (неблокирующе)
-	for {
+	timeout := time.After(time.Duration(timeoutMs) * time.Millisecond)
+	
+	// If no requestID provided (gRPC calls), return first response
+	if requestID == "" {
 		select {
-		case <-responseChannel:
-			// Discard old response
-		default:
-			// Channel is empty, proceed to wait for new response
-			goto waitForResponse
+		case response := <-responseChannel:
+			return response, nil
+		case <-timeout:
+			return "", fmt.Errorf("timeout waiting for incidents response after %dms", timeoutMs)
 		}
 	}
-
-waitForResponse:
-	timeout := time.Duration(timeoutMs) * time.Millisecond
-	select {
-	case response := <-responseChannel:
-		return response, nil
-	case <-time.After(timeout):
-		return "", fmt.Errorf("timeout waiting for incidents response after %dms", timeoutMs)
+	
+	// REST API calls with request_id matching
+	for {
+		select {
+		case response := <-responseChannel:
+			// Parse response to check request_id
+			var responseMap map[string]interface{}
+			if err := json.Unmarshal([]byte(response), &responseMap); err != nil {
+				continue // Skip malformed responses
+			}
+			
+			// Check if this response matches our request_id
+			if respID, ok := responseMap["request_id"].(string); ok && respID == requestID {
+				return response, nil
+			}
+			// Wrong request_id, continue waiting
+			
+		case <-timeout:
+			return "", fmt.Errorf("timeout waiting for incidents response after %dms", timeoutMs)
+		}
 	}
 }
 

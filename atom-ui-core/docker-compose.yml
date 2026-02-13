@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  atom-ui:
+    build: .
+    container_name: atom-ui-core
+    network_mode: host  # Access to atom-engine on host
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - /app/node_modules
+    environment:
+      - VITE_DEV_MODE=true
+    restart: unless-stopped

@@ -1030,7 +1030,7 @@ func (h *JobsHandler) GetJobStats(c *gin.Context) {
 	}
 
 	// Extract stats from response
-	if statsData, exists := response["stats"]; exists {
+	if statsData, exists := response["result"]; exists {
 		if statsMap, ok := statsData.(map[string]interface{}); ok {
 			if totalJobs, ok := statsMap["total_jobs"].(float64); ok {
 				stats.TotalJobs = int64(totalJobs)

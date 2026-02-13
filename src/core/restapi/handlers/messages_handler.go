@@ -19,6 +19,7 @@ import (
 	"atom-engine/src/core/restapi/middleware"
 	"atom-engine/src/core/restapi/models"
 	"atom-engine/src/core/restapi/utils"
+	"atom-engine/src/core/types"
 )
 
 // MessagesHandler handles message management HTTP requests
@@ -32,8 +33,9 @@ type MessagesHandler struct {
 type MessagesCoreInterface interface {
 	// JSON Message Routing to messages component
 	SendMessage(componentName, messageJSON string) error
-	WaitForMessagesResponse(timeoutMs int) (string, error)
+	WaitForMessagesResponse(timeoutMs int, requestID string) (string, error)
 	GetMessagesComponent() interface{}
+	GetMessageStats() (*types.MessageStats, error)
 }
 
 // Message data types
@@ -406,26 +408,27 @@ func (h *MessagesHandler) GetStats(c *gin.Context) {
 		logger.String("request_id", requestID),
 		logger.String("tenant_id", tenantID))
 
-	// Create stats request
-	statsReq := map[string]interface{}{
-		"type":       "get_stats",
-		"request_id": requestID,
-		"payload": map[string]interface{}{
-			"tenant_id": tenantID,
-		},
-	}
-
-	// Send to messages component and get response
-	response, err := h.sendMessagesRequest(statsReq, requestID)
+	// Use direct call to GetMessageStats instead of channel-based approach
+	typedStats, err := h.coreInterface.GetMessageStats()
 	if err != nil {
+		logger.Error("Failed to get message statistics",
+			logger.String("request_id", requestID),
+			logger.String("error", err.Error()))
+
 		apiErr := h.converter.GRPCErrorToAPIError(err)
 		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
 		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
 		return
 	}
 
-	// Parse stats from response
-	stats := h.parseStatsFromResponse(response)
+	// Convert to handler response format
+	stats := &MessageStats{
+		TotalMessages:         int32(typedStats.TotalMessages),
+		BufferedMessages:      int32(typedStats.BufferedMessages),
+		ExpiredMessages:       int32(typedStats.ExpiredMessages),
+		PublishedToday:        0, // Not available in new stats
+		InstancesCreatedToday: 0, // Not available in new stats
+	}
 
 	logger.Info("Message statistics retrieved",
 		logger.String("request_id", requestID),
@@ -561,7 +564,7 @@ func (h *MessagesHandler) sendMessagesRequest(
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
-	respJSON, err := h.coreInterface.WaitForMessagesResponse(30000)
+	respJSON, err := h.coreInterface.WaitForMessagesResponse(30000, requestID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response: %w", err)
 	}
@@ -576,13 +579,88 @@ func (h *MessagesHandler) sendMessagesRequest(
 }
 
 func (h *MessagesHandler) parseBufferedMessagesFromResponse(response map[string]interface{}) []BufferedMessage {
-	// Parse buffered messages from response - implementation details
-	return []BufferedMessage{}
+	result, ok := response["result"]
+	if !ok {
+		return []BufferedMessage{}
+	}
+
+	resultArray, ok := result.([]interface{})
+	if !ok {
+		return []BufferedMessage{}
+	}
+
+	messages := make([]BufferedMessage, 0, len(resultArray))
+	for _, item := range resultArray {
+		msgMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		msg := BufferedMessage{
+			ID:             h.getStringField(msgMap, "id"),
+			TenantID:       h.getStringField(msgMap, "tenant_id"),
+			Name:           h.getStringField(msgMap, "name"),
+			CorrelationKey: h.getStringField(msgMap, "correlation_key"),
+			Reason:         h.getStringField(msgMap, "reason"),
+		}
+
+		if variables, ok := msgMap["variables"].(map[string]interface{}); ok {
+			msg.Variables = variables
+		}
+
+		msg.PublishedAt = h.parseTimestamp(msgMap, "published_at")
+		msg.BufferedAt = h.parseTimestamp(msgMap, "buffered_at")
+		msg.ExpiresAt = h.parseTimestamp(msgMap, "expires_at")
+
+		messages = append(messages, msg)
+	}
+
+	return messages
 }
 
 func (h *MessagesHandler) parseSubscriptionsFromResponse(response map[string]interface{}) []MessageSubscription {
-	// Parse subscriptions from response - implementation details
-	return []MessageSubscription{}
+	result, ok := response["result"]
+	if !ok {
+		return []MessageSubscription{}
+	}
+
+	resultArray, ok := result.([]interface{})
+	if !ok {
+		return []MessageSubscription{}
+	}
+
+	subscriptions := make([]MessageSubscription, 0, len(resultArray))
+	for _, item := range resultArray {
+		subMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		sub := MessageSubscription{
+			ID:                   h.getStringField(subMap, "id"),
+			TenantID:             h.getStringField(subMap, "tenant_id"),
+			ProcessDefinitionKey: h.getStringField(subMap, "process_definition_key"),
+			StartEventID:         h.getStringField(subMap, "start_event_id"),
+			MessageName:          h.getStringField(subMap, "message_name"),
+			MessageRef:           h.getStringField(subMap, "message_ref"),
+			CorrelationKey:       h.getStringField(subMap, "correlation_key"),
+		}
+
+		if version, ok := subMap["process_version"].(float64); ok {
+			sub.ProcessVersion = int32(version)
+		}
+
+		if isActive, ok := subMap["is_active"].(bool); ok {
+			sub.IsActive = isActive
+		}
+
+		sub.CreatedAt = h.parseTimestamp(subMap, "created_at")
+		sub.UpdatedAt = h.parseTimestamp(subMap, "updated_at")
+
+		subscriptions = append(subscriptions, sub)
+	}
+
+	return subscriptions
 }
 
 func (h *MessagesHandler) parseStatsFromResponse(response map[string]interface{}) *MessageStats {
@@ -595,6 +673,39 @@ func (h *MessagesHandler) extractTotalCount(response map[string]interface{}) int
 		return int(count)
 	}
 	return 0
+}
+
+func (h *MessagesHandler) getStringField(data map[string]interface{}, field string) string {
+	if val, ok := data[field].(string); ok {
+		return val
+	}
+	return ""
+}
+
+func (h *MessagesHandler) parseTimestamp(data map[string]interface{}, field string) int64 {
+	val, ok := data[field]
+	if !ok {
+		return 0
+	}
+
+	switch v := val.(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	case string:
+		if v == "" {
+			return 0
+		}
+		// Try parsing ISO8601 timestamp
+		t, err := utils.ParseISO8601(v)
+		if err == nil {
+			return t.Unix()
+		}
+		return 0
+	default:
+		return 0
+	}
 }
 
 func (h *MessagesHandler) getRequestID(c *gin.Context) string {

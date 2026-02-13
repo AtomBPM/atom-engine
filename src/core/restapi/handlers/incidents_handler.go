@@ -53,7 +53,7 @@ type CreateIncidentRequest struct {
 type IncidentsCoreInterface interface {
 	// JSON Message Routing to incidents component
 	SendMessage(componentName, messageJSON string) error
-	WaitForIncidentsResponse(timeoutMs int) (string, error)
+	WaitForIncidentsResponse(timeoutMs int, requestID string) (string, error)
 	GetIncidentsComponent() interface{}
 }
 
@@ -615,7 +615,7 @@ func (h *IncidentsHandler) sendIncidentsRequest(
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
-	respJSON, err := h.coreInterface.WaitForIncidentsResponse(30000)
+	respJSON, err := h.coreInterface.WaitForIncidentsResponse(30000, requestID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response: %w", err)
 	}

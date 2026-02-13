@@ -66,8 +66,12 @@ type CoreInterface interface {
 	// Обработка ответов
 	WaitForParserResponse(timeoutMs int) (string, error)
 	WaitForJobsResponse(timeoutMs int) (string, error)
-	WaitForMessagesResponse(timeoutMs int) (string, error)
-	WaitForIncidentsResponse(timeoutMs int) (string, error)
+	WaitForMessagesResponse(timeoutMs int, requestID string) (string, error)
+	WaitForIncidentsResponse(timeoutMs int, requestID string) (string, error)
+
+	// Direct typed methods for REST API
+	// Прямые типизированные методы для REST API
+	GetMessageStats() (*types.MessageStats, error)
 }
 
 // CoreTypedInterface defines strongly typed system-wide methods

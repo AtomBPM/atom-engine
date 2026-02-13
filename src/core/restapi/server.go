@@ -377,7 +377,7 @@ func (s *Server) daemonStatusHandler(c *gin.Context) {
 	response := map[string]interface{}{
 		"status":     status.Status,
 		"health":     status.Health,
-		"uptime":     status.Uptime,
+		"uptime":     int64(status.Uptime.Seconds()),
 		"version":    status.Version,
 		"components": status.ComponentsTotal,
 	}

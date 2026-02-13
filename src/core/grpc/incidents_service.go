@@ -207,7 +207,7 @@ func (s *incidentsServiceServer) GetIncident(
 
 	// Wait for response from incidents component
 	// Ожидаем ответ от компонента incidents
-	responseJSON, err := s.core.WaitForIncidentsResponse(5000) // 5 second timeout
+	responseJSON, err := s.core.WaitForIncidentsResponse(5000, "") // 5 second timeout, empty requestID for gRPC
 	if err != nil {
 		logger.Error("Failed to get incidents response", logger.String("error", err.Error()))
 		return &incidentspb.GetIncidentResponse{
@@ -377,7 +377,7 @@ func (s *incidentsServiceServer) ListIncidents(
 
 	// Wait for response from incidents component
 	// Ожидаем ответ от компонента incidents
-	responseJSON, err := s.core.WaitForIncidentsResponse(5000) // 5 second timeout
+	responseJSON, err := s.core.WaitForIncidentsResponse(5000, "") // 5 second timeout, empty requestID for gRPC
 	if err != nil {
 		logger.Error("Failed to get incidents response", logger.String("error", err.Error()))
 		return &incidentspb.ListIncidentsResponse{
@@ -585,7 +585,7 @@ func (s *incidentsServiceServer) GetIncidentStats(
 
 	// Wait for response from incidents component
 	// Ожидаем ответ от компонента incidents
-	responseJSON, err := s.core.WaitForIncidentsResponse(5000) // 5 second timeout
+	responseJSON, err := s.core.WaitForIncidentsResponse(5000, "") // 5 second timeout, empty requestID for gRPC
 	if err != nil {
 		logger.Error("Failed to get incidents response", logger.String("error", err.Error()))
 		return &incidentspb.GetIncidentStatsResponse{

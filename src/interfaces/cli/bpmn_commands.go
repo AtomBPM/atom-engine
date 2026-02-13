@@ -162,8 +162,6 @@ func (d *DaemonCommand) BPMNList() error {
 	if resp.TotalPages > 1 {
 		fmt.Printf("Page %d of %d (Total: %d processes, Showing: %d)\n\n",
 			resp.Page, resp.TotalPages, resp.TotalCount, len(resp.Processes))
-	} else {
-		fmt.Printf("Found %d process(es):\n\n", resp.TotalCount)
 	}
 
 	printBPMNProcessesTable(resp.Processes, resp.TotalCount)

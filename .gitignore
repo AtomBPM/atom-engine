@@ -1,0 +1,47 @@
+atom-web-modeler/
+
+# Build artifacts
+build/
+*.exe
+*.test
+*.out
+
+# Dependencies
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Generated files
+proto/*/storagepb/
+proto/*/processpb/
+proto/*/parserpb/
+proto/*/timewheelpb/
+proto/*/jobspb/
+proto/*/messagespb/
+proto/*/expressionpb/
+proto/*/incidentspb/
+
+# Data directories
+data/
+logs/
+bpmn/
+
+# Config (local overrides)
+.golangci.yml
+atom-workflows/

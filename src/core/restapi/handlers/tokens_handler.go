@@ -69,6 +69,7 @@ func (h *TokensHandler) RegisterRoutes(router *gin.RouterGroup, authMiddleware *
 	}
 
 	{
+		tokens.GET("", h.ListTokens)
 		tokens.GET("/:id", h.GetTokenStatus)
 	}
 }
@@ -173,6 +174,146 @@ func (h *TokensHandler) GetTokenStatus(c *gin.Context) {
 		logger.String("state", token.State))
 
 	c.JSON(http.StatusOK, models.SuccessResponse(token, requestID))
+}
+
+// ListTokens handles GET /api/v1/tokens
+// @Summary List tokens
+// @Description Get list of tokens with filtering and pagination
+// @Tags tokens
+// @Produce json
+// @Param instance_id query string false "Filter by process instance ID"
+// @Param state query string false "Filter by state (ACTIVE, COMPLETED, CANCELLED)"
+// @Param page query int false "Page number (default: 1)"
+// @Param limit query int false "Items per page (default: 20)"
+// @Param sort_by query string false "Sort field (default: created_at)"
+// @Param sort_order query string false "Sort order: ASC or DESC (default: DESC)"
+// @Success 200 {object} models.APIResponse{data=[]TokenInfo}
+// @Failure 400 {object} models.APIResponse{error=models.APIError}
+// @Failure 401 {object} models.APIResponse{error=models.APIError}
+// @Failure 403 {object} models.APIResponse{error=models.APIError}
+// @Failure 500 {object} models.APIResponse{error=models.APIError}
+// @Security ApiKeyAuth
+// @Router /api/v1/tokens [get]
+func (h *TokensHandler) ListTokens(c *gin.Context) {
+	requestID := h.getRequestID(c)
+
+	// Parse query parameters
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "20")
+	instanceID := c.Query("instance_id")
+	stateFilter := c.Query("state")
+	sortBy := c.DefaultQuery("sort_by", "created_at")
+	sortOrder := c.DefaultQuery("sort_order", "DESC")
+
+	// Parse and validate pagination
+	paginationHelper := utils.NewPaginationHelper()
+	params, apiErr := paginationHelper.ParseAndValidate(pageStr, limitStr)
+	if apiErr != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	logger.Debug("Listing tokens",
+		logger.String("request_id", requestID),
+		logger.String("instance_id", instanceID),
+		logger.String("state", stateFilter),
+		logger.Int("page", params.Page),
+		logger.Int("limit", params.Limit))
+
+	// Get gRPC client
+	client, conn, err := h.getProcessGRPCClient()
+	if err != nil {
+		logger.Error("Failed to get Process gRPC client",
+			logger.String("request_id", requestID),
+			logger.String("error", err.Error()))
+
+		apiErr := models.InternalServerError("Process service not available")
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+	defer conn.Close()
+
+	// Create gRPC context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Call gRPC ListTokens method
+	grpcReq := &processpb.ListTokensRequest{
+		InstanceIdFilter: instanceID,
+		StateFilter:      stateFilter,
+		Page:             int32(params.Page),
+		PageSize:         int32(params.Limit),
+		SortBy:           sortBy,
+		SortOrder:        sortOrder,
+	}
+
+	resp, err := client.ListTokens(ctx, grpcReq)
+	if err != nil {
+		logger.Error("Failed to list tokens via gRPC",
+			logger.String("request_id", requestID),
+			logger.String("error", err.Error()))
+
+		apiErr := h.converter.GRPCErrorToAPIError(err)
+		statusCode := models.HTTPStatusFromErrorCode(apiErr.Code)
+		c.JSON(statusCode, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Check if operation succeeded
+	if !resp.Success {
+		message := "Failed to list tokens"
+		if resp.Message != "" {
+			message = resp.Message
+		}
+		apiErr := models.InternalServerError(message)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(apiErr, requestID))
+		return
+	}
+
+	// Convert gRPC tokens to REST API format
+	tokens := make([]TokenInfo, 0, len(resp.Tokens))
+	for _, t := range resp.Tokens {
+		token := TokenInfo{
+			ID:                t.TokenId,
+			ProcessInstanceID: t.ProcessInstanceId,
+			ProcessKey:        t.ProcessKey,
+			CurrentElementID:  t.CurrentElementId,
+			State:             t.State,
+			WaitingFor:        t.WaitingFor,
+			CreatedAt:         t.CreatedAt,
+			UpdatedAt:         t.UpdatedAt,
+		}
+
+		// Convert variables from map[string]string to map[string]interface{}
+		if t.Variables != nil {
+			token.Variables = make(map[string]interface{})
+			for k, v := range t.Variables {
+				token.Variables[k] = v
+			}
+		}
+
+		tokens = append(tokens, token)
+	}
+
+	// Build response with pagination
+	result := map[string]interface{}{
+		"data": tokens,
+		"pagination": map[string]interface{}{
+			"page":       resp.Page,
+			"limit":      resp.PageSize,
+			"total":      resp.TotalCount,
+			"pages":      resp.TotalPages,
+			"has_next":   resp.Page < resp.TotalPages,
+			"has_prev":   resp.Page > 1,
+		},
+	}
+
+	logger.Info("Tokens listed",
+		logger.String("request_id", requestID),
+		logger.Int("count", len(tokens)),
+		logger.Int("total", int(resp.TotalCount)))
+
+	c.JSON(http.StatusOK, models.SuccessResponse(result, requestID))
 }
 
 // Helper methods

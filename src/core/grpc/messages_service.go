@@ -72,7 +72,7 @@ func (s *messagesServiceServer) PublishMessage(
 
 	// Wait for response from messages component
 	// Ожидаем ответ от компонента messages
-	responseJSON, err := s.core.WaitForMessagesResponse(5000) // 5 second timeout
+	responseJSON, err := s.core.WaitForMessagesResponse(5000, "") // 5 second timeout, empty requestID for gRPC
 	if err != nil {
 		logger.Error("Failed to get messages response", logger.String("error", err.Error()))
 		return &messagespb.PublishMessageResponse{

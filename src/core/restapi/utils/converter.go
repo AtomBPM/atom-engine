@@ -333,3 +333,21 @@ func (c *Converter) MergeStringMaps(maps ...map[string]string) map[string]string
 	}
 	return result
 }
+
+// ParseISO8601 parses ISO8601 timestamp string
+func ParseISO8601(timestamp string) (time.Time, error) {
+	formats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04:05.999999999Z07:00",
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, timestamp); err == nil {
+			return t, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse timestamp: %s", timestamp)
+}

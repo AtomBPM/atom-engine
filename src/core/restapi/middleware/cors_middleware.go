@@ -10,6 +10,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -223,7 +224,7 @@ func (cm *CORSMiddleware) setCredentialsHeader(c *gin.Context) {
 // setMaxAgeHeader sets Access-Control-Max-Age header
 func (cm *CORSMiddleware) setMaxAgeHeader(c *gin.Context) {
 	if cm.config.MaxAge > 0 {
-		c.Header("Access-Control-Max-Age", strings.Join([]string{string(rune(cm.config.MaxAge + '0'))}, ""))
+		c.Header("Access-Control-Max-Age", strconv.Itoa(cm.config.MaxAge))
 	}
 }
 
